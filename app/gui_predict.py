@@ -101,6 +101,18 @@ class AwakeApp:
             "timestamp": range(len(scores)),
             "awakenness_score": scores
         })
+        
+        
+        # ✅ NaNを除外してから描画
+        valid = self.result.dropna()
+
+        # グラフ描画
+        self.ax.clear()
+        self.ax.plot(valid["timestamp"], valid["awakenness_score"])
+        self.ax.set_title("覚醒度推移グラフ")
+        self.ax.set_xlabel("時刻 (index)")
+        self.ax.set_ylabel("覚醒度スコア (0: 眠気強, 1: 覚醒状態)")
+        self.canvas.draw()
 
         # 推定結果のグラフ描画
         self.ax.clear()
