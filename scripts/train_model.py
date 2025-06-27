@@ -86,20 +86,10 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
                 print(f"Epoch [{epoch+1}/30], Loss: {loss.item():.4f}, Val Loss: {val_loss.item():.4f}")
             model.train()
 
-
-"""
-
-    # 保存
-    os.makedirs("models", exist_ok=True)
-    model_name = f"{model_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pt"
-    save_path = os.path.join("models", model_name)
-    torch.save(model.state_dict(), save_path)
-    print(f"モデルを保存しました: {save_path}")
-
     return model, scaler_X, scaler_y
 
+"""
 # 単体実行用
 if __name__ == "__main__":
     train_model("D:/analysis_v1/data/train_bio_driver_data.csv")
-
 """

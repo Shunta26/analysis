@@ -1,64 +1,50 @@
 #推論ロジック（モデル読み込み、予測）
 
-#models/フォルダ内に保存されたPyTorchモデルを読み込む
-#GUIから渡されたデータを前処理しモデルに入力
-#推定された覚醒度スコアを返す
-
 import torch
-import torch.nn as nn
 import pandas as pd
 import numpy as np
+import os
+import sys
 
-# ========================
-# LSTMモデルの構造（保存と一致させる）
-# ========================
-class LSTMModel(nn.Module):
-    def __init__(self, input_size=4, hidden_size=64, num_layers=1, output_size=1):
-        super(LSTMModel, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)
+# model_factory を scripts/ からインポートできるようにパスを追加
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "scripts"))
+from model_factory import get_model
 
-    def forward(self, x):
-        # x shape: [batch_size, seq_len, input_size]
-        out, _ = self.lstm(x)               # out shape: [batch, seq, hidden]
-        return self.fc(out[:, -1, :])       # 最後の時刻の出力だけを使う → [batch, output_size]
-
-# ========================
-# モデル読み込み関数
-# ========================
-def load_model(model_path: str, input_size=4):
-    model = LSTMModel(input_size=input_size)
+def load_model(model_path, input_size=4):
+    """
+    保存された PyTorch モデルを読み込みます。
+    モデル構造は model_factory.get_model() を使用して再構築されます。
+    """
+    model = get_model("lstm", input_size=input_size, regression=True)
     model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu")))
     model.eval()
     return model
 
-# ========================
-# 前処理（標準化）
-# ========================
-def normalize(x: np.ndarray):
-    return (x - np.mean(x, axis=0)) / (np.std(x, axis=0) + 1e-8)
+def predict_awakenness(model, df, sequence_length=10):
+    """
+    DataFrameから覚醒度を予測します。
+    入力は 'pupil', 'eda', 'eeg', 'hr' カラムを持つ前提です。
+    """
+    required_columns = ['pupil', 'eda', 'eeg', 'hr']
+    for col in required_columns:
+        if col not in df.columns:
+            raise ValueError(f"必要なカラムが不足しています: {col}")
 
-# ========================
-# 推論関数（複数行に対応）
-# ========================
-def predict_awakenness(model, df: pd.DataFrame):
-    # 必要な列を取り出し（順番に注意）
-    try:
-        features = df[["pupil", "eda", "eeg", "hr"]].values
-    except KeyError as e:
-        raise ValueError(f"必要な列がCSVにありません: {e}")
+    # データ抽出・正規化（0-1スケーリング）
+    data = df[required_columns].values.astype(np.float32)
+    data_min = np.min(data, axis=0)
+    data_max = np.max(data, axis=0)
+    data = (data - data_min) / (data_max - data_min + 1e-8)
 
-    # 正規化
-    features = normalize(features)
+    # 時系列に変換（sequenceごとにスライス）
+    sequences = []
+    for i in range(len(data) - sequence_length + 1):
+        sequences.append(data[i:i + sequence_length])
+    sequences = np.stack(sequences)
 
-    # 1行ずつ [1, 1, 4] 形式で推論
-    X = torch.tensor(features, dtype=torch.float32)
-    results = []
-
+    inputs = torch.tensor(sequences)
     with torch.no_grad():
-        for row in X:
-            input_tensor = row.unsqueeze(0).unsqueeze(0)  # shape: [1, 1, 4]
-            y_pred = model(input_tensor)
-            results.append(y_pred.item())
+        outputs = model(inputs).squeeze().numpy()
 
-    return results  # リストで返す
+    # sequence_length未満の先頭には NaN を補完しておく（時系列揃え）
+    return np.concatenate([np.full(sequence_length - 1, np.nan), outputs])

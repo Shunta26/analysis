@@ -40,9 +40,9 @@ def get_model(model_name: str, input_size: int = 1, regression: bool = False):
     model_name = model_name.lower()
     if model_name == "lstm":
         return LSTMModel(input_size=input_size, regression=regression)
-    elif model_name == "GRU":
+    elif model_name == "gru":
         return GRUModel(input_size=input_size)
-    elif model_name == "RNN":
+    elif model_name == "rnn":
         return SimpleRNNModel(input_size=input_size)
     else:
         raise ValueError(f"未対応のモデル名です: {model_name}")

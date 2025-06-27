@@ -81,7 +81,7 @@ class TrainApp:
 
     def run_training(self, model, optimizer, loss_func, csv_path):
         try:
-            acc, trained_model = train_model(model, optimizer, loss_func, csv_path)
+            trained_model, _, _ = train_model(csv_path, model_type=model.lower(), loss_type=loss_func, optimizer_type=optimizer)
 
             if self.save_model_var.get():
                 # モデルの自動保存処理
@@ -93,7 +93,7 @@ class TrainApp:
                     torch.save(trained_model.state_dict(), save_path)
                     messagebox.showinfo("保存完了", f"モデルを保存しました:\n{save_path}")
 
-            messagebox.showinfo("完了", f"学習が完了しました。\n予測精度: {acc:.2%}")
+            messagebox.showinfo("完了", f"学習が完了しました.")
         except Exception as e:
             messagebox.showerror("エラー", f"学習中にエラーが発生しました:\n{e}")
 
