@@ -15,7 +15,7 @@ class AwakeApp:
         # ウィンドウの基本設定
         self.root = root
         self.root.title("ドライバー覚醒度推定アプリ（推論モード）")
-        self.root.geometry("850x650")
+        self.root.geometry("1080x1080")
 
         # 各種データ保持用変数
         self.model = None
@@ -28,6 +28,11 @@ class AwakeApp:
         self.setup_plot()
         
         self.csv_path = None
+        
+        # ズーム・パン機能用変数
+        self.press = None       #マウスプレスイベントを保持
+        self.cur_xlim = None    #現在のｘ軸の表示範囲を保持
+        self.cur_ylim = None    #現在のｙ軸の表示範囲を保持
 
     def setup_widgets(self):
         # モデル選択セクション（プルダウンと更新ボタン）
@@ -51,6 +56,9 @@ class AwakeApp:
 
         # 推定実行ボタン
         tk.Button(self.root, text="覚醒度を推定", command=self.run_inference).pack(pady=5)
+        
+        # リセットボタンを追加
+        tk.Button(self.root, text="表示をリセット", command=self.reset_view).pack(pady=5)
 
         # 結果保存ボタン
         tk.Button(self.root, text="結果をCSVとして保存", command=self.save_csv).pack(pady=5)
@@ -96,6 +104,83 @@ class AwakeApp:
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.get_tk_widget().pack(pady=10)
+        
+        # マウスイベントのバインド
+        self.canvas.mpl_connect('button_press_event', self.on_press)
+        self.canvas.mpl_connect('button_release_event', self.on_release)
+        self.canvas.mpl_connect('motion_notify_event', self.on_motion)
+        self.canvas.mpl_connect('scroll_event', self.on_scroll)        
+        
+    def on_press(self, event):
+        # マウスボタンが押されたときの処理（パン開始）
+        if event.inaxes == self.ax:
+            self.press = event.xdata, event.ydata
+            self.cur_xlim = self.ax.get_xlim()
+            self.cur_ylim = self.ax.get_ylim()
+
+    def on_release(self, event):
+        # マウスボタンが離されたときの処理（パン終了）
+        self.press = None
+        self.ax.figure.canvas.draw()
+
+    def on_motion(self, event):
+        # マウスが移動したときの処理（パン中）
+        if self.press is None or event.inaxes != self.ax:
+            return
+        
+        # マウスの現在位置と初期位置のデータ座標の差を計算
+        xpress, ypress = self.press
+        xnew, ynew = event.xdata, event.ydata
+
+        # 軸の移動量を計算
+        dx = xnew - xpress
+        dy = ynew - ypress
+
+        # 新しい軸の範囲を設定
+        self.ax.set_xlim(self.cur_xlim[0] - dx, self.cur_xlim[1] - dx)
+        self.ax.set_ylim(self.cur_ylim[0] - dy, self.cur_ylim[1] - dy)
+        self.ax.figure.canvas.draw_idle() # アイドル時に再描画
+
+    def on_scroll(self, event):
+        # マウススクロールによるズーム処理
+        if event.inaxes != self.ax:
+            return
+
+        xdata = event.xdata # マウスカーソルのXデータ座標
+        ydata = event.ydata # マウスカーソルのYデータ座標
+
+        cur_xlim = self.ax.get_xlim()
+        cur_ylim = self.ax.get_ylim()
+
+        x_left = cur_xlim[0]
+        x_right = cur_xlim[1]
+        y_bottom = cur_ylim[0]
+        y_top = cur_ylim[1]
+
+        # ズームファクター
+        zoom_factor = 1.1 if event.step > 0 else 1/1.1 # スクロール方向で拡大・縮小を決定
+
+        # 新しいX軸の範囲を計算
+        new_x_left = xdata - (xdata - x_left) / zoom_factor
+        new_x_right = xdata + (x_right - xdata) / zoom_factor
+
+        # 新しいY軸の範囲を計算
+        new_y_bottom = ydata - (ydata - y_bottom) / zoom_factor
+        new_y_top = ydata + (y_top - ydata) / zoom_factor
+
+        self.ax.set_xlim(new_x_left, new_x_right)
+        self.ax.set_ylim(new_y_bottom, new_y_top)
+        self.ax.figure.canvas.draw_idle() # アイドル時に再描画
+        
+    def reset_view(self):
+        # グラフの表示をリセットする
+        if self.result is not None and not self.result.empty:
+            # データの最小値と最大値に基づいて軸の範囲を設定
+            self.ax.set_xlim(self.result["timestamp"].min(), self.result["timestamp"].max())
+            self.ax.set_ylim(self.result["awakenness_score"].min() - 0.1, self.result["awakenness_score"].max() + 0.1) # 少し余白を持たせる
+            self.canvas.draw()
+        else:
+            messagebox.showwarning("警告", "表示をリセットするデータがありません。")
 
     def load_csv(self):
         # ユーザーがCSVファイルを選択し、読み込む処理
@@ -154,6 +239,10 @@ class AwakeApp:
             self.ax.set_xlabel("時刻 (index)")
             self.ax.set_ylabel("覚醒度スコア (0: 眠気強, 1: 覚醒状態)")
             self.canvas.draw()
+            
+            #グラフが描画されたら、現在の軸の範囲を保存
+            self.cur_xlim = self.ax.get_xlim()
+            self.cur_ylim = self.ax.get_ylim()
 
         except Exception as e:
             messagebox.showerror("エラー", f"推定中にエラーが発生しました:\n{e}")
