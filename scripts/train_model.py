@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 import os
-from model_factory import get_model
+from scripts.model_factory import get_model
 
 # シーケンスを生成する関数
 def create_sequences(features, labels, seq_len):

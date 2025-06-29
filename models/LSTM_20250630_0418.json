@@ -1,0 +1,12 @@
+{
+    "model_type": "LSTM",
+    "optimizer": "Adam",
+    "loss_function": "MSELoss",
+    "selected_features": [
+        "pupil",
+        "eda",
+        "eeg",
+        "hr"
+    ],
+    "timestamp": "20250630_0418"
+}

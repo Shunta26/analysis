@@ -8,6 +8,7 @@ import pandas as pd
 import os
 import threading
 import torch
+import json
 from datetime import datetime
 from scripts.train_model import train_model
 
@@ -124,13 +125,34 @@ class TrainApp:
 
     def run_training(self, model, optimizer, loss_func, csv_path, selected_features):
         try:
-            trained_model, _, _ = train_model(csv_path, model_type=model.lower(), optimizer_type=optimizer, loss_type=loss_func, selected_features=selected_features)
+            trained_model, _, _ = train_model(
+                csv_path,
+                model_type=model.lower(),
+                optimizer_type=optimizer,
+                loss_type=loss_func,
+                selected_features=selected_features
+            )
 
             if self.save_model_var.get():
                 os.makedirs("models", exist_ok=True)
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-                filename = f"{model}_{timestamp}.pt"
-                torch.save(trained_model.state_dict(), os.path.join("models", filename))
+                base_filename = f"{model}_{timestamp}"
+
+                # モデル保存
+                model_path = os.path.join("models", f"{base_filename}.pt")
+                torch.save(trained_model.state_dict(), model_path)
+
+                # JSONファイル保存
+                config = {
+                    "model_type": model,
+                    "optimizer": optimizer,
+                    "loss_function": loss_func,
+                    "selected_features": selected_features,
+                    "timestamp": timestamp
+                }
+                json_path = os.path.join("models", f"{base_filename}.json")
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(config, f, ensure_ascii=False, indent=4)
 
             messagebox.showinfo("完了", "学習が完了しました。")
         except Exception as e:
