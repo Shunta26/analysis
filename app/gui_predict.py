@@ -5,6 +5,7 @@ from tkinter import filedialog, ttk, messagebox
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import os
 from app.inference import load_model, predict_awakenness
@@ -72,8 +73,27 @@ class AwakeApp:
             self.model_combo.current(0)
 
     def setup_plot(self):
+        font_path = None
+        for prop in fm.findSystemFonts(fontpaths=None, fontext='ttf'):
+            if 'Meiryo' in fm.FontProperties(fname=prop).get_name():
+                font_path = prop
+                break
+        
+        if font_path:
+            plt.rcParams['font.family'] = fm.FontProperties(fname=font_path).get_name()
+        else:
+            # フォントが見つからない場合のフォールバック（警告を表示するなど）
+            print("Warning: Meiryo font not found. Japanese characters might not display correctly.")
+            # MacOSの場合は 'Hiragino Sans GB' など
+            if os.name == 'posix': # macOS/Linux
+                plt.rcParams['font.family'] = 'Hiragino Sans GB' # macOS向け
+            else: # その他のOS
+                plt.rcParams['font.family'] = 'sans-serif' # デフォルトのサンセリフ
+
+        plt.rcParams['axes.unicode_minus'] = False # 負の符号の文字化けを防ぐ
+
         # 覚醒度スコア推移グラフのキャンバス設定
-        self.fig, self.ax = plt.subplots(figsize=(8, 3))
+        self.fig, self.ax = plt.subplots(figsize=(8, 6))
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.get_tk_widget().pack(pady=10)
 

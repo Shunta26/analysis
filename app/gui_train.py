@@ -62,16 +62,16 @@ class TrainApp:
         ttk.Button(self.root, text="CSVファイルを選択", command=self.select_file).pack()
 
         # 詳細設定ボタン
-        ttk.Button(self.root, text="詳細設定（使用データ選択）", command=self.open_settings_window).pack(pady=5)
+        ttk.Button(self.root, text="生理データ選択", command=self.open_settings_window).pack(pady=10)
 
         # モデル保存チェック
-        ttk.Checkbutton(self.root, text="学習後にモデルを保存する", variable=self.save_model_var).pack(pady=10)
+        ttk.Checkbutton(self.root, text="学習後にモデルを保存する", variable=self.save_model_var).pack(pady=15)
 
         # 学習実行ボタン
-        ttk.Button(self.root, text="学習開始", command=self.start_training).pack(pady=10)
+        ttk.Button(self.root, text="学習開始", command=self.start_training).pack(pady=15)
 
         # 戻るボタン
-        ttk.Button(self.root, text="← モード選択に戻る", command=self.back_to_menu).pack(pady=10)
+        ttk.Button(self.root, text="← モード選択に戻る", command=self.back_to_menu).pack(pady=15)
 
     def open_settings_window(self):
         settings_win = tk.Toplevel(self.root)
