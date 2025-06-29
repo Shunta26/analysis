@@ -1,68 +1,105 @@
 #学習用GUI
 # app/gui_train.py
+# gui_train.py 全体（生理データ選択・モデル等設定付き学習GUI）
 
-import os
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-import threading
+from tkinter import filedialog, ttk, messagebox
 import pandas as pd
+import os
+import threading
 import torch
-from scripts.train_model import train_model  # train_model関数をscripts/train_model.pyに分離して管理
+import json
 from datetime import datetime
+from scripts.train_model import train_model
 
 class TrainApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("覚醒度推定モデル 学習GUI")
-        self.root.geometry("500x480")
+        self.root.title("ドライバー覚醒度推定アプリ（学習モード）")
+        self.root.geometry("600x600")
 
-        # モデル選択
-        ttk.Label(root, text="モデル選択:").pack(pady=5)
+        # 各設定用変数
+        self.selected_features = {
+            'pupil': tk.BooleanVar(value=True),
+            'eda': tk.BooleanVar(value=True),
+            'eeg': tk.BooleanVar(value=True),
+            'hr': tk.BooleanVar(value=True)
+        }
+
         self.model_var = tk.StringVar()
-        self.model_combo = ttk.Combobox(root, textvariable=self.model_var, state="readonly",
+        self.optimizer_var = tk.StringVar()
+        self.loss_var = tk.StringVar()
+        self.save_model_var = tk.BooleanVar(value=True)
+        self.csv_path = None
+
+        self.setup_widgets()
+
+    def setup_widgets(self):
+        # モデル選択
+        ttk.Label(self.root, text="モデル選択:").pack(pady=5)
+        self.model_combo = ttk.Combobox(self.root, textvariable=self.model_var, state="readonly",
                                         values=["LSTM", "GRU", "RNN"])
         self.model_combo.current(0)
         self.model_combo.pack()
 
         # 最適化関数選択
-        ttk.Label(root, text="最適化関数選択:").pack(pady=5)
-        self.optimizer_var = tk.StringVar()
-        self.optimizer_combo = ttk.Combobox(root, textvariable=self.optimizer_var, state="readonly",
+        ttk.Label(self.root, text="最適化関数選択:").pack(pady=5)
+        self.optimizer_combo = ttk.Combobox(self.root, textvariable=self.optimizer_var, state="readonly",
                                             values=["Adam", "SGD", "RMSprop"])
         self.optimizer_combo.current(0)
         self.optimizer_combo.pack()
 
         # 損失関数選択
-        ttk.Label(root, text="損失関数選択:").pack(pady=5)
-        self.loss_var = tk.StringVar()
-        self.loss_combo = ttk.Combobox(root, textvariable=self.loss_var, state="readonly",
+        ttk.Label(self.root, text="損失関数選択:").pack(pady=5)
+        self.loss_combo = ttk.Combobox(self.root, textvariable=self.loss_var, state="readonly",
                                        values=["MSELoss", "BCELoss"])
         self.loss_combo.current(0)
         self.loss_combo.pack()
 
-        # ファイル選択
-        self.csv_path = None
-        self.file_label = ttk.Label(root, text="CSVファイルが選択されていません")
+        # CSVファイル読み込み
+        self.file_label = ttk.Label(self.root, text="CSVファイルが選択されていません")
         self.file_label.pack(pady=10)
-        self.file_button = ttk.Button(root, text="CSVファイルを選択", command=self.select_file)
-        self.file_button.pack()
+        ttk.Button(self.root, text="CSVファイルを選択", command=self.select_file).pack()
+
+        # 詳細設定ボタン
+        ttk.Button(self.root, text="生理データ選択", command=self.open_settings_window).pack(pady=10)
 
         # モデル保存チェック
-        self.save_model_var = tk.BooleanVar(value=True)
-        self.save_check = ttk.Checkbutton(root, text="学習後にモデルを保存する", variable=self.save_model_var)
-        self.save_check.pack(pady=10)
+        ttk.Checkbutton(self.root, text="学習後にモデルを保存する", variable=self.save_model_var).pack(pady=15)
 
-        # 学習ボタン
-        self.train_button = ttk.Button(root, text="学習開始", command=self.start_training)
-        self.train_button.pack(pady=20)
+        # 学習実行ボタン
+        ttk.Button(self.root, text="学習開始", command=self.start_training).pack(pady=15)
 
         # 戻るボタン
-        ttk.Button(root, text="← モード選択に戻る", command=self.back_to_menu).pack(pady=10)
+        ttk.Button(self.root, text="← モード選択に戻る", command=self.back_to_menu).pack(pady=15)
 
-    def back_to_menu(self):
-        self.root.destroy()
-        from main import main_menu
-        main_menu()
+    def open_settings_window(self):
+        settings_win = tk.Toplevel(self.root)
+        settings_win.title("使用する生理データの選択")
+        settings_win.geometry("300x250")
+
+        temp_vars = {key: tk.BooleanVar(value=var.get()) for key, var in self.selected_features.items()}
+
+        for key in temp_vars:
+            tk.Checkbutton(settings_win, text=key.upper(), variable=temp_vars[key]).pack(anchor='w')
+
+        def save_and_close():
+            if not any(var.get() for var in temp_vars.values()):
+                result = messagebox.askyesno("警告", "1つも選択されていません。変更を保存しますか？")
+                if not result:
+                    return
+            for key in temp_vars:
+                self.selected_features[key].set(temp_vars[key].get())
+            settings_win.destroy()
+
+        def cancel_and_close():
+            settings_win.destroy()
+
+        btn_frame = ttk.Frame(settings_win)
+        btn_frame.pack(pady=10)
+
+        ttk.Button(btn_frame, text="保存して戻る", command=save_and_close).pack(side='right', padx=10)
+        ttk.Button(btn_frame, text="変更を削除して戻る", command=cancel_and_close, style="Danger.TButton").pack(side='left', padx=10)
 
     def select_file(self):
         filepath = filedialog.askopenfilename(filetypes=[("CSVファイル", "*.csv")])
@@ -74,32 +111,61 @@ class TrainApp:
         if not self.csv_path:
             messagebox.showwarning("警告", "CSVファイルを選択してください。")
             return
+
+        features = [key for key, var in self.selected_features.items() if var.get()]
+        if not features:
+            messagebox.showwarning("警告", "最低1つの生理データを選択してください。")
+            return
+
         model = self.model_var.get()
         optimizer = self.optimizer_var.get()
         loss_func = self.loss_var.get()
-        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_path), daemon=True).start()
 
-    def run_training(self, model, optimizer, loss_func, csv_path):
+        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_path, features), daemon=True).start()
+
+    def run_training(self, model, optimizer, loss_func, csv_path, selected_features):
         try:
-            trained_model, _, _ = train_model(csv_path, model_type=model.lower(), loss_type=loss_func, optimizer_type=optimizer)
+            trained_model, _, _ = train_model(
+                csv_path,
+                model_type=model.lower(),
+                optimizer_type=optimizer,
+                loss_type=loss_func,
+                selected_features=selected_features
+            )
 
             if self.save_model_var.get():
-                # モデルの自動保存処理
-                if self.save_model_var.get():
-                    os.makedirs("models", exist_ok=True)
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-                    filename = f"{model}_{timestamp}.pt"
-                    save_path = os.path.join("models", filename)
-                    torch.save(trained_model.state_dict(), save_path)
-                    messagebox.showinfo("保存完了", f"モデルを保存しました:\n{save_path}")
+                os.makedirs("models", exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+                base_filename = f"{model}_{timestamp}"
 
-            messagebox.showinfo("完了", f"学習が完了しました.")
+                # モデル保存
+                model_path = os.path.join("models", f"{base_filename}.pt")
+                torch.save(trained_model.state_dict(), model_path)
+
+                # JSONファイル保存
+                config = {
+                    "model_type": model,
+                    "optimizer": optimizer,
+                    "loss_function": loss_func,
+                    "selected_features": selected_features,
+                    "timestamp": timestamp
+                }
+                json_path = os.path.join("models", f"{base_filename}.json")
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(config, f, ensure_ascii=False, indent=4)
+
+            messagebox.showinfo("完了", "学習が完了しました。")
         except Exception as e:
             messagebox.showerror("エラー", f"学習中にエラーが発生しました:\n{e}")
 
+    def back_to_menu(self):
+        self.root.destroy()
+        from main import main_menu
+        main_menu()
+
 # 起動関数
+
 def launch_train_gui():
     root = tk.Tk()
     app = TrainApp(root)
     root.mainloop()
-

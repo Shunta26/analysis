@@ -5,33 +5,35 @@ import pandas as pd
 import numpy as np
 import os
 import sys
+import json
 
 # model_factory を scripts/ からインポートできるようにパスを追加
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "scripts"))
-from model_factory import get_model
+from scripts.model_factory import get_model
 
-def load_model(model_path, input_size=4):
-    """
-    保存された PyTorch モデルを読み込みます。
-    モデル構造は model_factory.get_model() を使用して再構築されます。
-    """
-    model = get_model("lstm", input_size=input_size, regression=True)
+def load_model(model_path):
+    config_path = model_path.replace(".pt", ".json")
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    model_type = config["model_type"].lower()
+    input_size = len(config["selected_features"])  # <- 特徴量の数から自動決定
+    model = get_model(model_type, input_size=input_size, regression=True)
     model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu")))
     model.eval()
-    return model
+    return model, config["selected_features"]
 
-def predict_awakenness(model, df, sequence_length=10):
+def predict_awakenness(model, df, selected_features, sequence_length=10):
     """
     DataFrameから覚醒度を予測します。
     入力は 'pupil', 'eda', 'eeg', 'hr' カラムを持つ前提です。
     """
-    required_columns = ['pupil', 'eda', 'eeg', 'hr']
-    for col in required_columns:
+    for col in selected_features:
         if col not in df.columns:
             raise ValueError(f"必要なカラムが不足しています: {col}")
 
     # データ抽出・正規化（0-1スケーリング）
-    data = df[required_columns].values.astype(np.float32)
+    data = df[selected_features].values.astype(np.float32)
     data_min = np.min(data, axis=0)
     data_max = np.max(data, axis=0)
     data = (data - data_min) / (data_max - data_min + 1e-8)

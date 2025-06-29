@@ -5,6 +5,7 @@ from tkinter import filedialog, ttk, messagebox
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import os
 from app.inference import load_model, predict_awakenness
@@ -20,10 +21,13 @@ class AwakeApp:
         self.model = None
         self.data = None
         self.result = None
+        self.selected_features = None
 
         # GUIウィジェットとグラフの設定
         self.setup_widgets()
         self.setup_plot()
+        
+        self.csv_path = None
 
     def setup_widgets(self):
         # モデル選択セクション（プルダウンと更新ボタン）
@@ -69,8 +73,27 @@ class AwakeApp:
             self.model_combo.current(0)
 
     def setup_plot(self):
+        font_path = None
+        for prop in fm.findSystemFonts(fontpaths=None, fontext='ttf'):
+            if 'Meiryo' in fm.FontProperties(fname=prop).get_name():
+                font_path = prop
+                break
+        
+        if font_path:
+            plt.rcParams['font.family'] = fm.FontProperties(fname=font_path).get_name()
+        else:
+            # フォントが見つからない場合のフォールバック（警告を表示するなど）
+            print("Warning: Meiryo font not found. Japanese characters might not display correctly.")
+            # MacOSの場合は 'Hiragino Sans GB' など
+            if os.name == 'posix': # macOS/Linux
+                plt.rcParams['font.family'] = 'Hiragino Sans GB' # macOS向け
+            else: # その他のOS
+                plt.rcParams['font.family'] = 'sans-serif' # デフォルトのサンセリフ
+
+        plt.rcParams['axes.unicode_minus'] = False # 負の符号の文字化けを防ぐ
+
         # 覚醒度スコア推移グラフのキャンバス設定
-        self.fig, self.ax = plt.subplots(figsize=(8, 3))
+        self.fig, self.ax = plt.subplots(figsize=(8, 6))
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.get_tk_widget().pack(pady=10)
 
@@ -78,49 +101,62 @@ class AwakeApp:
         # ユーザーがCSVファイルを選択し、読み込む処理
         file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
         if file_path:
-            self.data = pd.read_csv(file_path)
+            self.csv_path = file_path
             self.file_label.config(text=f"読み込みファイル: {os.path.basename(file_path)}")
-            print("データ読み込み成功:", self.data.shape)
+            
 
     def run_inference(self):
         # 推定処理本体
-        if self.data is None:
+        if not self.csv_path:
             messagebox.showwarning("警告", "CSVファイルを読み込んでください。")
             return
-
+        
         model_file = self.model_combo.get()
         if not model_file:
             messagebox.showwarning("警告", "モデルファイルを選択してください。")
             return
 
         model_path = os.path.join("models", model_file)
-        self.model = load_model(model_path, input_size=4)
-
-        scores = predict_awakenness(self.model, self.data)
-        self.result = pd.DataFrame({
-            "timestamp": range(len(scores)),
-            "awakenness_score": scores
-        })
         
-        
-        # ✅ NaNを除外してから描画
-        valid = self.result.dropna()
+        try:
+            # モデル読み込みと、モデルが学習に使用した特徴量を取得
+            self.model, self.selected_features = load_model(model_path)
+        except Exception as e:
+            messagebox.showerror("エラー", f"モデルの読み込みに失敗しました:\n{e}")
+            return
 
-        # グラフ描画
-        self.ax.clear()
-        self.ax.plot(valid["timestamp"], valid["awakenness_score"])
-        self.ax.set_title("覚醒度推移グラフ")
-        self.ax.set_xlabel("時刻 (index)")
-        self.ax.set_ylabel("覚醒度スコア (0: 眠気強, 1: 覚醒状態)")
-        self.canvas.draw()
+        try:
+            # CSVデータ読み込み
+            self.data = pd.read_csv(self.csv_path)
+            print("データ読み込み成功:", self.data.shape)
 
-        # 推定結果のグラフ描画
-        self.ax.clear()
-        self.ax.plot(self.result["timestamp"], self.result["awakenness_score"])
-        self.ax.set_title("覚醒度推移グラフ")
-        self.ax.set_xlabel("時刻 (index)")
-        self.ax.set_ylabel("覚醒度スコア (0: 眠気強, 1: 覚醒状態)")
-        self.canvas.draw()
+            # 読み込んだモデルのselected_featuresを使ってデータをフィルタリング
+            # 必要なカラムがデータに存在するかチェック
+            missing_cols = [col for col in self.selected_features if col not in self.data.columns]
+            if missing_cols:
+                messagebox.showerror("エラー", f"選択されたモデルに必要な生理データカラムが不足しています: {', '.join(missing_cols)}")
+                return
+            
+            # predict_awakenness 関数に selected_features を渡す
+            scores = predict_awakenness(self.model, self.data, self.selected_features)
+            self.result = pd.DataFrame({
+                "timestamp": range(len(scores)),
+                "awakenness_score": scores
+            })
+            
+            # NaNを除外してから描画
+            valid = self.result.dropna()
+
+            # グラフ描画
+            self.ax.clear()
+            self.ax.plot(valid["timestamp"], valid["awakenness_score"])
+            self.ax.set_title("覚醒度推移グラフ")
+            self.ax.set_xlabel("時刻 (index)")
+            self.ax.set_ylabel("覚醒度スコア (0: 眠気強, 1: 覚醒状態)")
+            self.canvas.draw()
+
+        except Exception as e:
+            messagebox.showerror("エラー", f"推定中にエラーが発生しました:\n{e}")
 
     def save_csv(self):
         # 推定結果をCSVファイルとして保存

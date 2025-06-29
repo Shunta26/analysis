@@ -10,10 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 import os
-import sys
-sys.path.append(os.path.dirname(__file__))
-from model_factory import get_model
-
+from scripts.model_factory import get_model
 
 # シーケンスを生成する関数
 def create_sequences(features, labels, seq_len):
@@ -24,11 +21,16 @@ def create_sequences(features, labels, seq_len):
     return np.array(X), np.array(y)
 
 # モデル学習関数
-def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_type="Adam", seq_len=10):
+def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_type="Adam",
+                seq_len=10, selected_features=None):
+
     df = pd.read_csv(data_path)
 
-    # 生理データの読み込み
-    features = df[["pupil", "eda", "eeg", "hr"]].astype(float).values
+    if selected_features is None or not selected_features:
+        raise ValueError("selected_features を1つ以上選択してください。")
+
+    # 選択された生理データの列を抽出
+    features = df[selected_features].astype(float).values
     labels = df["kss"].astype(float).values
 
     # 正規化
@@ -43,21 +45,23 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
     # データ分割
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Tensor化
+    # Tensor変換
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     X_train_tensor = torch.tensor(X_train, dtype=torch.float32).to(device)
     y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1).to(device)
     X_val_tensor = torch.tensor(X_val, dtype=torch.float32).to(device)
     y_val_tensor = torch.tensor(y_val, dtype=torch.float32).unsqueeze(1).to(device)
 
-    # モデル作成
-    model = get_model(model_type, input_size=4, regression=True).to(device)
+    # モデル構築
+    model = get_model(model_type, input_size=len(selected_features), regression=True).to(device)
 
     # 損失関数
     if loss_type == "MSELoss":
         criterion = nn.MSELoss()
+    elif loss_type == "BCELoss":
+        criterion = nn.BCELoss()
     else:
-        raise ValueError("Invalid loss function")
+        raise ValueError("指定された損失関数が無効です。")
 
     # 最適化手法
     if optimizer_type == "Adam":
@@ -67,7 +71,7 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
     elif optimizer_type == "RMSprop":
         optimizer = optim.RMSprop(model.parameters(), lr=0.001)
     else:
-        raise ValueError("Invalid optimizer")
+        raise ValueError("指定された最適化手法が無効です。")
 
     # 学習ループ
     model.train()
@@ -87,9 +91,3 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
             model.train()
 
     return model, scaler_X, scaler_y
-
-"""
-# 単体実行用
-if __name__ == "__main__":
-    train_model("D:/analysis_v1/data/train_bio_driver_data.csv")
-"""
