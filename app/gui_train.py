@@ -31,6 +31,7 @@ class TrainApp:
         self.loss_var = tk.StringVar()
         self.save_model_var = tk.BooleanVar(value=True)
         self.csv_path = None
+        self.time_window_seconds = tk.IntVar(value=60) # 新しい変数
 
         self.setup_widgets()
 
@@ -62,7 +63,7 @@ class TrainApp:
         ttk.Button(self.root, text="CSVファイルを選択", command=self.select_file).pack()
 
         # 詳細設定ボタン
-        ttk.Button(self.root, text="生理データ選択", command=self.open_settings_window).pack(pady=10)
+        ttk.Button(self.root, text="詳細設定", command=self.open_settings_window).pack(pady=10)
 
         # モデル保存チェック
         ttk.Checkbutton(self.root, text="学習後にモデルを保存する", variable=self.save_model_var).pack(pady=15)
@@ -75,21 +76,43 @@ class TrainApp:
 
     def open_settings_window(self):
         settings_win = tk.Toplevel(self.root)
-        settings_win.title("使用する生理データの選択")
-        settings_win.geometry("300x250")
+        settings_win.title("詳細設定") # タイトルも変更
+        settings_win.geometry("300x300") # ジオメトリを少し大きくする
 
+        # 生理データ選択
+        ttk.Label(settings_win, text="使用する生理データの選択:").pack(pady=5)
         temp_vars = {key: tk.BooleanVar(value=var.get()) for key, var in self.selected_features.items()}
 
         for key in temp_vars:
             tk.Checkbutton(settings_win, text=key.upper(), variable=temp_vars[key]).pack(anchor='w')
 
+        # 時間窓（秒数）設定
+        ttk.Label(settings_win, text="時間窓 (秒): ").pack(pady=5)
+        temp_time_window_seconds = tk.IntVar(value=self.time_window_seconds.get())
+        ttk.Entry(settings_win, textvariable=temp_time_window_seconds).pack()
+
         def save_and_close():
+            # 生理データ選択の保存
             if not any(var.get() for var in temp_vars.values()):
                 result = messagebox.askyesno("警告", "1つも選択されていません。変更を保存しますか？")
                 if not result:
                     return
             for key in temp_vars:
                 self.selected_features[key].set(temp_vars[key].get())
+            
+            # 時間窓（秒数）の保存とバリデーション
+            try:
+                new_time_window = temp_time_window_seconds.get()
+                if not isinstance(new_time_window, int) or new_time_window <= 0:
+                    raise ValueError("時間窓は正の整数で入力してください。")
+                self.time_window_seconds.set(new_time_window)
+            except ValueError as e:
+                messagebox.showerror("入力エラー", str(e))
+                return
+            except Exception:
+                messagebox.showerror("入力エラー", "時間窓は有効な数値を入力してください。")
+                return
+
             settings_win.destroy()
 
         def cancel_and_close():
@@ -120,17 +143,19 @@ class TrainApp:
         model = self.model_var.get()
         optimizer = self.optimizer_var.get()
         loss_func = self.loss_var.get()
+        time_window = self.time_window_seconds.get() # 時間窓を取得
 
-        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_path, features), daemon=True).start()
+        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_path, features, time_window), daemon=True).start()
 
-    def run_training(self, model, optimizer, loss_func, csv_path, selected_features):
+    def run_training(self, model, optimizer, loss_func, csv_path, selected_features, time_window_seconds):
         try:
             trained_model, _, _ = train_model(
                 csv_path,
                 model_type=model.lower(),
                 optimizer_type=optimizer,
                 loss_type=loss_func,
-                selected_features=selected_features
+                selected_features=selected_features,
+                time_window_seconds=time_window_seconds # 時間窓を渡す
             )
 
             if self.save_model_var.get():
@@ -148,6 +173,7 @@ class TrainApp:
                     "optimizer": optimizer,
                     "loss_function": loss_func,
                     "selected_features": selected_features,
+                    "time_window_seconds": time_window_seconds, # JSONにも追加
                     "timestamp": timestamp
                 }
                 json_path = os.path.join("models", f"{base_filename}.json")
@@ -169,3 +195,4 @@ def launch_train_gui():
     root = tk.Tk()
     app = TrainApp(root)
     root.mainloop()
+    
