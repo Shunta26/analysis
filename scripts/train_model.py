@@ -60,6 +60,15 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
     X_val_tensor = torch.tensor(X_val, dtype=torch.float32).to(device)
     y_val_tensor = torch.tensor(y_val, dtype=torch.float32).unsqueeze(1).to(device)
 
+    # データセットとデータローダーの作成
+    from torch.utils.data import TensorDataset, DataLoader
+    train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+    val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
+
+    batch_size = 64
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
     # モデル構築
     model = get_model(model_type, input_size=len(selected_features), regression=True).to(device)
 
@@ -82,21 +91,28 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
         raise ValueError("指定された最適化手法が無効です。")
 
     # 学習ループ
-    model.train()
     for epoch in range(30):
-        optimizer.zero_grad()
-        outputs = model(X_train_tensor)
-        loss = criterion(outputs, y_train_tensor)
-        loss.backward()
-        optimizer.step()
+        model.train()
+        running_loss = 0.0
+        for inputs, labels in train_loader:
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
 
+        # 5エポックごとに検証
         if (epoch + 1) % 5 == 0:
             model.eval()
+            val_running_loss = 0.0
             with torch.no_grad():
-                val_outputs = model(X_val_tensor)
-                val_loss = criterion(val_outputs, y_val_tensor)
-                print(f"Epoch [{epoch+1}/30], Loss: {loss.item():.4f}, Val Loss: {val_loss.item():.4f}")
-            model.train()
+                for val_inputs, val_labels in val_loader:
+                    val_outputs = model(val_inputs)
+                    val_loss = criterion(val_outputs, val_labels)
+                    val_running_loss += val_loss.item()
+            
+            print(f"Epoch [{epoch+1}/30], Loss: {running_loss / len(train_loader):.4f}, Val Loss: {val_running_loss / len(val_loader):.4f}")
 
     return model, scaler_X, scaler_y
 
