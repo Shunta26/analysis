@@ -87,7 +87,7 @@ class TrainApp:
             tk.Checkbutton(settings_win, text=key.upper(), variable=temp_vars[key]).pack(anchor='w')
 
         # 時間窓（秒数）設定
-        ttk.Label(settings_win, text="時間窓 (秒): ").pack(pady=5)
+        ttk.Label(settings_win, text="データ個数: ").pack(pady=5)
         temp_time_window_seconds = tk.IntVar(value=self.time_window_seconds.get())
         ttk.Entry(settings_win, textvariable=temp_time_window_seconds).pack()
 
