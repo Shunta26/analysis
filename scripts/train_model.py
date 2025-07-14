@@ -49,7 +49,8 @@ class BioSignalWindowDataset(Dataset):
 # モデル学習関数
 def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_type="Adam",
                 selected_features=None, window_size=60,
-                lr=0.001, epochs=30, num_layers=2, hidden_size=64, hyper_params_modes=None):
+                lr=0.001, epochs=30, num_layers=2, hidden_size=64, hyper_params_modes=None,
+                use_early_stopping=False, patience=10):
     
     df = pd.read_csv(data_path)
     total_data_points = len(df) # データ総数を取得
@@ -82,6 +83,12 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
             hidden_size = int(64 + (total_data_points / 10000) * 10)
             hidden_size = min(hidden_size, 256) # 最大隠れ層サイズを設定
             print(f"自動調整: 隠れ層 = {hidden_size}")
+
+        # 早期終了設定のログ
+        if use_early_stopping:
+            print(f"早期終了: 有効 (Patience = {patience})")
+        else:
+            print("早期終了: 無効")
 
     if selected_features is None or not selected_features:
         raise ValueError("selected_features を1つ以上選択してください。")
@@ -147,6 +154,10 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
         raise ValueError(f"指定された最適化手法が無効です: {optimizer_type}")
 
     # 7. 学習ループ
+    best_val_loss = float('inf')
+    patience_counter = 0
+    best_model_state = None
+
     for epoch in range(epochs):
         model.train()
         running_loss = 0.0
@@ -171,7 +182,27 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
                     val_loss = criterion(val_outputs, val_labels)
                     val_running_loss += val_loss.item()
             
-            print(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss / len(train_loader):.4f}, Val Loss: {val_running_loss / len(val_loader):.4f}")
+            current_val_loss = val_running_loss / len(val_loader)
+            print(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss / len(train_loader):.4f}, Val Loss: {current_val_loss:.4f}")
+
+            # 早期終了のロジック
+            if use_early_stopping:
+                if current_val_loss < best_val_loss:
+                    best_val_loss = current_val_loss
+                    patience_counter = 0
+                    best_model_state = model.state_dict() # 最も良いモデルの状態を保存
+                    best_epoch = epoch + 1 # ベストエポックを記録
+                else:
+                    patience_counter += 1
+                    print(f"  [Early Stopping] Patience: {patience_counter}/{patience}") # カウンターのログ
+                    if patience_counter >= patience:
+                        print(f"早期終了: 検証ロスが {patience} エポック改善しなかったため学習を停止します。")
+                        print(f"  最終モデルはエポック {best_epoch} の状態をロードしました。") # ベストエポックのログ
+                        break
+    
+    # 早期終了が有効で、かつベストモデルが保存されている場合、その状態をロード
+    if use_early_stopping and best_model_state is not None:
+        model.load_state_dict(best_model_state)
 
     return model, scaler_X, scaler_y, hidden_size
 

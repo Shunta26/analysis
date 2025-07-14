@@ -39,6 +39,10 @@ class TrainApp:
         self.num_layers = tk.IntVar(value=2)
         self.hidden_size = tk.IntVar(value=64)
 
+        # 早期終了設定
+        self.early_stopping_var = tk.BooleanVar(value=False)
+        self.patience_var = tk.IntVar(value=10)
+
         # 自動/手動調整モード用の変数
         self.lr_mode = tk.StringVar(value="自動調整")
         self.epochs_mode = tk.StringVar(value="自動調整")
@@ -143,6 +147,10 @@ class TrainApp:
         temp_hidden_size = tk.IntVar(value=self.hidden_size.get())
         temp_window_size = tk.IntVar(value=self.window_size.get())
 
+        # 早期終了の一時的な変数
+        temp_early_stopping_var = tk.BooleanVar(value=self.early_stopping_var.get())
+        temp_patience_var = tk.IntVar(value=self.patience_var.get())
+
         # データ個数（これは常に手動）
         data_frame = ttk.Frame(param_frame)
         data_frame.pack(fill='x', padx=10, pady=5)
@@ -154,6 +162,16 @@ class TrainApp:
         create_setting_row(param_frame, "エポック数:", temp_epochs_mode, temp_epochs)
         create_setting_row(param_frame, "モデル層:", temp_num_layers_mode, temp_num_layers)
         create_setting_row(param_frame, "隠れ層:", temp_hidden_size_mode, temp_hidden_size)
+
+        # 早期終了設定
+        es_frame = ttk.LabelFrame(settings_win, text="早期終了設定")
+        es_frame.pack(fill='x', padx=10, pady=10)
+        tk.Checkbutton(es_frame, text="早期終了を有効にする", variable=temp_early_stopping_var).pack(anchor='w', padx=10)
+        
+        patience_frame = ttk.Frame(es_frame)
+        patience_frame.pack(fill='x', padx=10, pady=5)
+        ttk.Label(patience_frame, text="Patience (エポック数):").pack(side='left')
+        ttk.Entry(patience_frame, textvariable=temp_patience_var, width=10).pack(side='left')
 
         # --- 保存・キャンセルボタン ---
         def save_and_close():
@@ -173,6 +191,10 @@ class TrainApp:
                 if self.epochs_mode.get() == "手動調整": self.epochs.set(temp_epochs.get())
                 if self.num_layers_mode.get() == "手動調整": self.num_layers.set(temp_num_layers.get())
                 if self.hidden_size_mode.get() == "手動調整": self.hidden_size.set(temp_hidden_size.get())
+
+                # 早期終了設定を保存
+                self.early_stopping_var.set(temp_early_stopping_var.get())
+                self.patience_var.set(temp_patience_var.get())
 
                 settings_win.destroy()
             except tk.TclError as e:
@@ -220,9 +242,9 @@ class TrainApp:
             "hidden_size_mode": self.hidden_size_mode.get()
         }
 
-        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_path, features, window_size, lr, epochs, num_layers, hidden_size, hyper_params_modes), daemon=True).start()
+        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_path, features, window_size, lr, epochs, num_layers, hidden_size, hyper_params_modes, self.early_stopping_var.get(), self.patience_var.get()), daemon=True).start()
 
-    def run_training(self, model, optimizer, loss_func, csv_path, selected_features, window_size, lr, epochs, num_layers, hidden_size, hyper_params_modes):
+    def run_training(self, model, optimizer, loss_func, csv_path, selected_features, window_size, lr, epochs, num_layers, hidden_size, hyper_params_modes, use_early_stopping, patience):
         try:
             trained_model, scaler_X, scaler_y, actual_hidden_size = train_model(
                 csv_path,
@@ -235,7 +257,9 @@ class TrainApp:
                 epochs=epochs,
                 num_layers=num_layers,
                 hidden_size=hidden_size,
-                hyper_params_modes=hyper_params_modes
+                hyper_params_modes=hyper_params_modes,
+                use_early_stopping=use_early_stopping,
+                patience=patience
             )
 
             if self.save_model_var.get():
