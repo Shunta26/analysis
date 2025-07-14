@@ -205,7 +205,7 @@ class AwakeApp:
         
         try:
             # モデル読み込みと、モデルが学習に使用した特徴量を取得
-            self.model, self.selected_features = load_model(model_path)
+            self.model, self.selected_features, self.scaler_X_mean, self.scaler_X_scale, self.scaler_y_mean, self.scaler_y_scale = load_model(model_path)
         except Exception as e:
             messagebox.showerror("エラー", f"モデルの読み込みに失敗しました:\n{e}")
             return
@@ -223,7 +223,7 @@ class AwakeApp:
                 return
             
             # predict_awakenness 関数に selected_features を渡す
-            scores = predict_awakenness(self.model, self.data, self.selected_features)
+            scores = predict_awakenness(self.model, self.data, self.selected_features, self.scaler_X_mean, self.scaler_X_scale, self.scaler_y_mean, self.scaler_y_scale)
             self.result = pd.DataFrame({
                 "timestamp": range(len(scores)),
                 "awakenness_score": scores

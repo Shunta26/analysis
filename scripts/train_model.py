@@ -6,97 +6,153 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.model_selection import train_test_split
+from torch.utils.data import Dataset, DataLoader, random_split
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 import os
 from scripts.model_factory import get_model
 
+class BioSignalWindowDataset(Dataset):
+    """
+    生体信号データのためのカスタムDatasetクラス。
+    ウィンドウ単位でデータを動的に生成し、メモリ効率を向上させる。
+    """
+    def __init__(self, df, selected_features, window_size, scaler_X, scaler_y):
+        self.df = df
+        self.selected_features = selected_features
+        self.window_size = window_size
+        self.scaler_X = scaler_X
+        self.scaler_y = scaler_y
+        
+        # 'kss' カラムが存在するか確認
+        if 'kss' not in self.df.columns:
+            raise ValueError("DataFrameに 'kss' カラムが見つかりません。")
+
+    def __len__(self):
+        # 生成可能なウィンドウの総数を返す
+        return len(self.df) - self.window_size + 1
+
+    def __getitem__(self, idx):
+        # 指定されたインデックスのデータウィンドウを取得
+        window_df = self.df.iloc[idx : idx + self.window_size]
+        
+        # 特徴量とラベルを抽出
+        features = window_df[self.selected_features].values
+        label = window_df['kss'].mean() # ウィンドウ内のkssの平均値をラベルとする
+
+        # データを正規化
+        features_scaled = self.scaler_X.transform(features)
+        label_scaled = self.scaler_y.transform(np.array([[label]]))
+
+        return torch.tensor(features_scaled, dtype=torch.float32), torch.tensor(label_scaled, dtype=torch.float32).flatten()
 
 # モデル学習関数
 def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_type="Adam",
                 selected_features=None, window_size=60,
-                lr=0.001, epochs=30, num_layers=2, hidden_size=64): # 引数追加
+                lr=0.001, epochs=30, num_layers=2, hidden_size=64, hyper_params_modes=None):
+    
     df = pd.read_csv(data_path)
+    total_data_points = len(df) # データ総数を取得
+
+    # ハイパーパラメータの自動調整ロジック
+    if hyper_params_modes:
+        # 学習率の調整
+        if hyper_params_modes["lr_mode"] == "自動調整":
+            # データ量が多いほど学習率を小さくする（例: 10000データで0.001、100000データで0.0005）
+            lr = max(0.0001, 0.001 * (1 - (total_data_points / 1000000) * 0.5)) # 最小値を設定
+            print(f"自動調整: 学習率 = {lr:.6f}")
+
+        # エポック数の調整
+        if hyper_params_modes["epochs_mode"] == "自動調整":
+            # データ量が多いほどエポック数を増やす（例: 10000データで30、100000データで50）
+            epochs = int(30 + (total_data_points / 10000) * 2) # 1万データごとに2エポック追加
+            epochs = min(epochs, 100) # 最大エポック数を設定
+            print(f"自動調整: エポック数 = {epochs}")
+
+        # モデル層の調整
+        if hyper_params_modes["num_layers_mode"] == "自動調整":
+            # データ量が多いほど層を増やす（例: 10000データで2、50000データで3）
+            num_layers = int(2 + (total_data_points / 50000))
+            num_layers = min(num_layers, 5) # 最大層数を設定
+            print(f"自動調整: モデル層 = {num_layers}")
+
+        # 隠れ層の調整
+        if hyper_params_modes["hidden_size_mode"] == "自動調整":
+            # データ量が多いほど隠れ層のサイズを増やす（例: 10000データで64、50000データで128）
+            hidden_size = int(64 + (total_data_points / 10000) * 10)
+            hidden_size = min(hidden_size, 256) # 最大隠れ層サイズを設定
+            print(f"自動調整: 隠れ層 = {hidden_size}")
 
     if selected_features is None or not selected_features:
         raise ValueError("selected_features を1つ以上選択してください。")
 
-    # 指定された個数でデータを分割
-    windowed_list = []
-    # スライド幅を1としてウィンドウを作成
-    for i in range(len(df) - window_size + 1):
-        window_df = df.iloc[i:i + window_size]
-        
-        features = window_df[selected_features].values
-        kss_mean = window_df['kss'].mean()
-        windowed_list.append((features, kss_mean))
+    # 1. データ分割 (時間的順序を維持するため、シャッフルしない)
+    train_size = int(len(df) * 0.8)
+    train_df = df.iloc[:train_size]
+    val_df = df.iloc[train_size:]
 
-    # ウィンドウが作成できなかった場合のエラー
-    if not windowed_list:
-        raise ValueError("データが少なすぎるため、ウィンドウを作成できませんでした。")
-        
-    X_list, y_list = zip(*windowed_list)
-    
-    X = np.array(X_list)
-    y = np.array(y_list)
-
-
-    # 正規化
+    # 2. スケーラーの準備と学習 (訓練データのみを使用)
     scaler_X = StandardScaler()
     scaler_y = StandardScaler()
-    
-    # Xの形状は (サンプル数, seq_len, 特徴量数) なので、2Dに変換して正規化
-    n_samples, seq_len, n_features = X.shape
-    X = scaler_X.fit_transform(X.reshape(-1, n_features)).reshape(n_samples, seq_len, n_features)
-    y = scaler_y.fit_transform(y.reshape(-1, 1)).flatten()
 
-    # データ分割
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+    # 訓練データの特徴量とラベルを使ってスケーラーを学習させる
+    # ウィンドウ化する前の全訓練データでスケーラーをfitする
+    scaler_X.fit(train_df[selected_features].values)
+    scaler_y.fit(train_df[['kss']].values)
 
-    # Tensor変換
+    # ゼロ除算を回避するためのチェックと対策
+    # 特徴量のスケーラー
+    zero_std_features_indices = np.where(scaler_X.scale_ == 0)[0]
+    if len(zero_std_features_indices) > 0:
+        zero_std_features = [selected_features[i] for i in zero_std_features_indices]
+        print(f"警告: 以下の特徴量の標準偏差が0です: {zero_std_features}")
+        print("ゼロ除算を避けるため、これらの特徴量のスケーリングを調整します。")
+        scaler_X.scale_[zero_std_features_indices] = 1.0
+
+    # ラベルのスケーラー
+    if scaler_y.scale_[0] == 0:
+        print("警告: ラベル（kss）の標準偏差が0です。")
+        print("ゼロ除算を避けるため、ラベルのスケーリングを調整します。")
+        scaler_y.scale_[0] = 1.0
+
+    # 3. カスタムDatasetのインスタンス化
+    train_dataset = BioSignalWindowDataset(train_df, selected_features, window_size, scaler_X, scaler_y)
+    val_dataset = BioSignalWindowDataset(val_df, selected_features, window_size, scaler_X, scaler_y)
+
+    # 4. デバイスの決定とDataLoaderの作成
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    X_train_tensor = torch.tensor(X_train, dtype=torch.float32).to(device)
-    y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1).to(device)
-    X_val_tensor = torch.tensor(X_val, dtype=torch.float32).to(device)
-    y_val_tensor = torch.tensor(y_val, dtype=torch.float32).unsqueeze(1).to(device)
+    pin_memory_flag = True if device.type == 'cuda' else False
 
-    # データセットとデータローダーの作成
-    from torch.utils.data import TensorDataset, DataLoader
-    train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-    val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
-
+    # num_workers > 0 を設定すると、データ読み込みが並列化され、特にGPU使用時に学習が高速化します。
+    # pin_memory=True は、データをGPUに転送する際の速度を向上させます。(GPU利用時のみ有効)
     batch_size = 64
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    num_workers = 4 # CPUコア数に応じて調整
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory_flag)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory_flag)
 
-    # モデル構築
+    # 5. モデルの構築
     model = get_model(model_type, input_size=len(selected_features), 
-                      hidden_size=hidden_size, num_layers=num_layers, regression=True).to(device) # 引数追加
+                      hidden_size=hidden_size, num_layers=num_layers, regression=True).to(device)
 
-    # 損失関数
-    if loss_type == "MSELoss":
-        criterion = nn.MSELoss()
-    elif loss_type == "BCELoss":
-        criterion = nn.BCELoss()
-    else:
-        raise ValueError("指定された損失関数が無効です。")
-
-    # 最適化手法
+    # 6. 損失関数と最適化手法
+    criterion = nn.MSELoss() if loss_type == "MSELoss" else nn.BCELoss()
+    
     if optimizer_type == "Adam":
-        optimizer = optim.Adam(model.parameters(), lr=lr) # 引数追加
+        optimizer = optim.Adam(model.parameters(), lr=lr)
     elif optimizer_type == "SGD":
-        optimizer = optim.SGD(model.parameters(), lr=lr) # 引数追加
+        optimizer = optim.SGD(model.parameters(), lr=lr)
     elif optimizer_type == "RMSprop":
-        optimizer = optim.RMSprop(model.parameters(), lr=lr) # 引数追加
+        optimizer = optim.RMSprop(model.parameters(), lr=lr)
     else:
-        raise ValueError("指定された最適化手法が無効です。")
+        raise ValueError(f"指定された最適化手法が無効です: {optimizer_type}")
 
-    # 学習ループ
-    for epoch in range(epochs): # 引数追加
+    # 7. 学習ループ
+    for epoch in range(epochs):
         model.train()
         running_loss = 0.0
         for inputs, labels in train_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
@@ -110,18 +166,18 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
             val_running_loss = 0.0
             with torch.no_grad():
                 for val_inputs, val_labels in val_loader:
+                    val_inputs, val_labels = val_inputs.to(device), val_labels.to(device)
                     val_outputs = model(val_inputs)
                     val_loss = criterion(val_outputs, val_labels)
                     val_running_loss += val_loss.item()
             
             print(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss / len(train_loader):.4f}, Val Loss: {val_running_loss / len(val_loader):.4f}")
 
-    return model, scaler_X, scaler_y
+    return model, scaler_X, scaler_y, hidden_size
 
-
-import argparse
 
 if __name__ == "__main__":
+    import argparse
     parser = argparse.ArgumentParser(description="モデルの学習を行います。")
     parser.add_argument("--model_type", type=str, default="LSTM", choices=["LSTM", "GRU", "RNN"],
                         help="学習するモデルの種類を選択します (LSTM, GRU, RNN)")
@@ -135,7 +191,7 @@ if __name__ == "__main__":
     model, scaler_X, scaler_y = train_model(data_path, 
                                               model_type=args.model_type, 
                                               selected_features=selected_features,
-                                              window_size=60)  # ここを修正
+                                              window_size=60)
 
     # モデル保存
     now = datetime.now().strftime("%Y%m%d_%H%M")
