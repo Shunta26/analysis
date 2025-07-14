@@ -15,27 +15,27 @@ from scripts.model_factory import get_model
 
 # モデル学習関数
 def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_type="Adam",
-                selected_features=None, time_window_seconds=60):
-    df = pd.read_csv(data_path, parse_dates=['timestamp'])
-    df.set_index('timestamp', inplace=True)
+                selected_features=None, window_size=60):
+    df = pd.read_csv(data_path)
 
     if selected_features is None or not selected_features:
         raise ValueError("selected_features を1つ以上選択してください。")
 
-    # 指定された秒数でリサンプリング
-    resampled_list = []
-    expected_rows = time_window_seconds
-    for group_name, group_df in df.resample(f'{time_window_seconds}S'):
-        if len(group_df) == expected_rows:
-            features = group_df[selected_features].values
-            kss_mean = group_df['kss'].mean()
-            resampled_list.append((features, kss_mean))
-
-    # 指定された秒数ちょうどのデータがないものは除外されている
-    if not resampled_list:
-        raise ValueError("指定された秒数ちょうどのデータがありません。データを確認してください。")
+    # 指定された個数でデータを分割
+    windowed_list = []
+    # スライド幅を1としてウィンドウを作成
+    for i in range(len(df) - window_size + 1):
+        window_df = df.iloc[i:i + window_size]
         
-    X_list, y_list = zip(*resampled_list)
+        features = window_df[selected_features].values
+        kss_mean = window_df['kss'].mean()
+        windowed_list.append((features, kss_mean))
+
+    # ウィンドウが作成できなかった場合のエラー
+    if not windowed_list:
+        raise ValueError("データが少なすぎるため、ウィンドウを作成できませんでした。")
+        
+    X_list, y_list = zip(*windowed_list)
     
     X = np.array(X_list)
     y = np.array(y_list)
@@ -132,7 +132,8 @@ if __name__ == "__main__":
     
     model, scaler_X, scaler_y = train_model(data_path, 
                                               model_type=args.model_type, 
-                                              selected_features=selected_features)
+                                              selected_features=selected_features,
+                                              window_size=60)  # ここを修正
 
     # モデル保存
     now = datetime.now().strftime("%Y%m%d_%H%M")
