@@ -15,7 +15,8 @@ from scripts.model_factory import get_model
 
 # モデル学習関数
 def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_type="Adam",
-                selected_features=None, window_size=60):
+                selected_features=None, window_size=60,
+                lr=0.001, epochs=30, num_layers=2, hidden_size=64): # 引数追加
     df = pd.read_csv(data_path)
 
     if selected_features is None or not selected_features:
@@ -70,7 +71,8 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # モデル構築
-    model = get_model(model_type, input_size=len(selected_features), regression=True).to(device)
+    model = get_model(model_type, input_size=len(selected_features), 
+                      hidden_size=hidden_size, num_layers=num_layers, regression=True).to(device) # 引数追加
 
     # 損失関数
     if loss_type == "MSELoss":
@@ -82,16 +84,16 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
 
     # 最適化手法
     if optimizer_type == "Adam":
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        optimizer = optim.Adam(model.parameters(), lr=lr) # 引数追加
     elif optimizer_type == "SGD":
-        optimizer = optim.SGD(model.parameters(), lr=0.001)
+        optimizer = optim.SGD(model.parameters(), lr=lr) # 引数追加
     elif optimizer_type == "RMSprop":
-        optimizer = optim.RMSprop(model.parameters(), lr=0.001)
+        optimizer = optim.RMSprop(model.parameters(), lr=lr) # 引数追加
     else:
         raise ValueError("指定された最適化手法が無効です。")
 
     # 学習ループ
-    for epoch in range(30):
+    for epoch in range(epochs): # 引数追加
         model.train()
         running_loss = 0.0
         for inputs, labels in train_loader:
@@ -112,7 +114,7 @@ def train_model(data_path, model_type="LSTM", loss_type="MSELoss", optimizer_typ
                     val_loss = criterion(val_outputs, val_labels)
                     val_running_loss += val_loss.item()
             
-            print(f"Epoch [{epoch+1}/30], Loss: {running_loss / len(train_loader):.4f}, Val Loss: {val_running_loss / len(val_loader):.4f}")
+            print(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss / len(train_loader):.4f}, Val Loss: {val_running_loss / len(val_loader):.4f}")
 
     return model, scaler_X, scaler_y
 

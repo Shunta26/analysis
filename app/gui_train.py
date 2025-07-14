@@ -31,7 +31,13 @@ class TrainApp:
         self.loss_var = tk.StringVar()
         self.save_model_var = tk.BooleanVar(value=True)
         self.csv_path = None
-        self.time_window_seconds = tk.IntVar(value=60) # 新しい変数
+        self.window_size = tk.IntVar(value=60)
+
+        # 詳細設定のデフォルト値
+        self.lr = tk.DoubleVar(value=0.001)
+        self.epochs = tk.IntVar(value=30)
+        self.num_layers = tk.IntVar(value=2)
+        self.hidden_size = tk.IntVar(value=64)
 
         self.setup_widgets()
 
@@ -88,8 +94,28 @@ class TrainApp:
 
         # 時間窓（秒数）設定
         ttk.Label(settings_win, text="データ個数: ").pack(pady=5)
-        temp_time_window_seconds = tk.IntVar(value=self.time_window_seconds.get())
-        ttk.Entry(settings_win, textvariable=temp_time_window_seconds).pack()
+        temp_window_size = tk.IntVar(value=self.window_size.get())
+        ttk.Entry(settings_win, textvariable=temp_window_size).pack()
+
+        # 学習率
+        ttk.Label(settings_win, text="学習率:").pack(pady=5)
+        temp_lr = tk.DoubleVar(value=self.lr.get())
+        ttk.Entry(settings_win, textvariable=temp_lr).pack()
+
+        # エポック数
+        ttk.Label(settings_win, text="エポック数:").pack(pady=5)
+        temp_epochs = tk.IntVar(value=self.epochs.get())
+        ttk.Entry(settings_win, textvariable=temp_epochs).pack()
+
+        # モデル層
+        ttk.Label(settings_win, text="モデル層:").pack(pady=5)
+        temp_num_layers = tk.IntVar(value=self.num_layers.get())
+        ttk.Entry(settings_win, textvariable=temp_num_layers).pack()
+
+        # 隠れ層
+        ttk.Label(settings_win, text="隠れ層:").pack(pady=5)
+        temp_hidden_size = tk.IntVar(value=self.hidden_size.get())
+        ttk.Entry(settings_win, textvariable=temp_hidden_size).pack()
 
         def save_and_close():
             # 生理データ選択の保存
@@ -102,15 +128,16 @@ class TrainApp:
             
             # 時間窓（秒数）の保存とバリデーション
             try:
-                new_time_window = temp_time_window_seconds.get()
-                if not isinstance(new_time_window, int) or new_time_window <= 0:
-                    raise ValueError("時間窓は正の整数で入力してください。")
-                self.time_window_seconds.set(new_time_window)
+                self.window_size.set(temp_window_size.get())
+                self.lr.set(temp_lr.get())
+                self.epochs.set(temp_epochs.get())
+                self.num_layers.set(temp_num_layers.get())
+                self.hidden_size.set(temp_hidden_size.get())
             except ValueError as e:
                 messagebox.showerror("入力エラー", str(e))
                 return
             except Exception:
-                messagebox.showerror("入力エラー", "時間窓は有効な数値を入力してください。")
+                messagebox.showerror("入力エラー", "有効な数値を入力してください。")
                 return
 
             settings_win.destroy()
@@ -143,11 +170,15 @@ class TrainApp:
         model = self.model_var.get()
         optimizer = self.optimizer_var.get()
         loss_func = self.loss_var.get()
-        time_window = self.time_window_seconds.get() # 時間窓を取得
+        window_size = self.window_size.get()
+        lr = self.lr.get()
+        epochs = self.epochs.get()
+        num_layers = self.num_layers.get()
+        hidden_size = self.hidden_size.get()
 
-        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_path, features, time_window), daemon=True).start()
+        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_path, features, window_size, lr, epochs, num_layers, hidden_size), daemon=True).start()
 
-    def run_training(self, model, optimizer, loss_func, csv_path, selected_features, time_window_seconds):
+    def run_training(self, model, optimizer, loss_func, csv_path, selected_features, window_size, lr, epochs, num_layers, hidden_size):
         try:
             trained_model, _, _ = train_model(
                 csv_path,
@@ -155,7 +186,11 @@ class TrainApp:
                 optimizer_type=optimizer,
                 loss_type=loss_func,
                 selected_features=selected_features,
-                time_window_seconds=time_window_seconds # 時間窓を渡す
+                window_size=window_size,
+                lr=lr,
+                epochs=epochs,
+                num_layers=num_layers,
+                hidden_size=hidden_size
             )
 
             if self.save_model_var.get():

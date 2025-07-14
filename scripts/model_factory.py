@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 
 class LSTMModel(nn.Module):
-    def __init__(self, input_size=1, hidden_size=64, regression=False):
+    def __init__(self, input_size=1, hidden_size=64, num_layers=2, regression=False):
         super(LSTMModel, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers=num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, 1)
         self.activation = nn.Identity() if regression else nn.Sigmoid()
     
@@ -36,13 +36,13 @@ class SimpleRNNModel(nn.Module):
         out = out[:, -1, :]
         return torch.sigmoid(self.fc(out))
 
-def get_model(model_name: str, input_size: int = 1, regression: bool = False):
+def get_model(model_name: str, input_size: int = 1, hidden_size: int = 64, num_layers: int = 2, regression: bool = False):
     model_name = model_name.lower()
     if model_name == "lstm":
-        return LSTMModel(input_size=input_size, regression=regression)
+        return LSTMModel(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, regression=regression)
     elif model_name == "gru":
-        return GRUModel(input_size=input_size)
+        return GRUModel(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers)
     elif model_name == "rnn":
-        return SimpleRNNModel(input_size=input_size)
+        return SimpleRNNModel(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers)
     else:
         raise ValueError(f"未対応のモデル名です: {model_name}")
