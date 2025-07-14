@@ -208,7 +208,11 @@ class TrainApp:
                     "optimizer": optimizer,
                     "loss_function": loss_func,
                     "selected_features": selected_features,
-                    "time_window_seconds": time_window_seconds, # JSONにも追加
+                    "window_size": window_size,
+                    "lr": lr,
+                    "epochs": epochs,
+                    "num_layers": num_layers,
+                    "hidden_size": hidden_size,
                     "timestamp": timestamp
                 }
                 json_path = os.path.join("models", f"{base_filename}.json")

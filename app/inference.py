@@ -17,8 +17,11 @@ def load_model(model_path):
         config = json.load(f)
 
     model_type = config["model_type"].lower()
-    input_size = len(config["selected_features"])  # <- 特徴量の数から自動決定
-    model = get_model(model_type, input_size=input_size, regression=True)
+    input_size = len(config["selected_features"])
+    hidden_size = config.get("hidden_size", 64)  # デフォルト値64
+    num_layers = config.get("num_layers", 2)    # デフォルト値2
+
+    model = get_model(model_type, input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, regression=True)
     model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu")))
     model.eval()
     return model, config["selected_features"]
