@@ -32,6 +32,7 @@ class TrainApp:
         self.save_model_var = tk.BooleanVar(value=True)
         self.csv_paths = None
         self.window_size = tk.IntVar(value=60)
+        self.labeling_method_var = tk.StringVar(value="average") # 追加
 
         # 詳細設定のデフォルト値
         self.lr = tk.DoubleVar(value=0.001)
@@ -93,7 +94,7 @@ class TrainApp:
     def open_settings_window(self):
         settings_win = tk.Toplevel(self.root)
         settings_win.title("詳細設定")
-        settings_win.geometry("400x500") # ウィンドウサイズを調整
+        settings_win.geometry("400x600") # ウィンドウサイズを調整
 
         # --- ウィジェットの状態を切り替える関数 ---
         def toggle_entry(entry_widget, mode_var):
@@ -115,27 +116,28 @@ class TrainApp:
             entry = ttk.Entry(frame, textvariable=value_var, width=15)
             entry.pack(side='left')
 
-            # モード変更時にEntryの状態を切り替えるようにバインド
             combo.bind("<<ComboboxSelected>>", lambda event: toggle_entry(entry, mode_var))
-            
-            # 初期状態を設定
             toggle_entry(entry, mode_var)
-            
-            return entry # 後で参照するために返す
+            return entry
 
         # --- 各種設定 ---
-        # 生理データ選択
         feature_frame = ttk.LabelFrame(settings_win, text="使用する生理データ")
         feature_frame.pack(fill='x', padx=10, pady=10)
         temp_vars = {key: tk.BooleanVar(value=var.get()) for key, var in self.selected_features.items()}
         for key in temp_vars:
             tk.Checkbutton(feature_frame, text=key.upper(), variable=temp_vars[key]).pack(anchor='w', padx=10)
 
-        # ハイパーパラメータ設定
+        # ラベリング方法設定
+        labeling_frame = ttk.LabelFrame(settings_win, text="ラベル付け方法")
+        labeling_frame.pack(fill='x', padx=10, pady=10)
+        temp_labeling_method = tk.StringVar(value=self.labeling_method_var.get())
+        labeling_combo = ttk.Combobox(labeling_frame, textvariable=temp_labeling_method, 
+                                        values=["average", "first", "last"], state="readonly")
+        labeling_combo.pack(padx=10, pady=5)
+
         param_frame = ttk.LabelFrame(settings_win, text="ハイパーパラメータ設定")
         param_frame.pack(fill='x', padx=10, pady=10)
 
-        # 一時的な変数を作成
         temp_lr_mode = tk.StringVar(value=self.lr_mode.get())
         temp_epochs_mode = tk.StringVar(value=self.epochs_mode.get())
         temp_num_layers_mode = tk.StringVar(value=self.num_layers_mode.get())
@@ -147,23 +149,19 @@ class TrainApp:
         temp_hidden_size = tk.IntVar(value=self.hidden_size.get())
         temp_window_size = tk.IntVar(value=self.window_size.get())
 
-        # 早期終了の一時的な変数
         temp_early_stopping_var = tk.BooleanVar(value=self.early_stopping_var.get())
         temp_patience_var = tk.IntVar(value=self.patience_var.get())
 
-        # データ個数（これは常に手動）
         data_frame = ttk.Frame(param_frame)
         data_frame.pack(fill='x', padx=10, pady=5)
         ttk.Label(data_frame, text="データ個数:", width=12).pack(side='left')
         ttk.Entry(data_frame, textvariable=temp_window_size, width=28).pack(side='left', padx=5)
 
-        # 各ハイパーパラメータの行を作成
         create_setting_row(param_frame, "学習率:", temp_lr_mode, temp_lr)
         create_setting_row(param_frame, "エポック数:", temp_epochs_mode, temp_epochs)
         create_setting_row(param_frame, "モデル層:", temp_num_layers_mode, temp_num_layers)
         create_setting_row(param_frame, "隠れ層:", temp_hidden_size_mode, temp_hidden_size)
 
-        # 早期終了設定
         es_frame = ttk.LabelFrame(settings_win, text="早期終了設定")
         es_frame.pack(fill='x', padx=10, pady=10)
         tk.Checkbutton(es_frame, text="早期終了を有効にする", variable=temp_early_stopping_var).pack(anchor='w', padx=10)
@@ -173,26 +171,23 @@ class TrainApp:
         ttk.Label(patience_frame, text="Patience (エポック数):").pack(side='left')
         ttk.Entry(patience_frame, textvariable=temp_patience_var, width=10).pack(side='left')
 
-        # --- 保存・キャンセルボタン ---
         def save_and_close():
             try:
-                # 値を本体の変数に保存
                 for key in temp_vars:
                     self.selected_features[key].set(temp_vars[key].get())
                 
+                self.labeling_method_var.set(temp_labeling_method.get())
                 self.window_size.set(temp_window_size.get())
                 self.lr_mode.set(temp_lr_mode.get())
                 self.epochs_mode.set(temp_epochs_mode.get())
                 self.num_layers_mode.set(temp_num_layers_mode.get())
                 self.hidden_size_mode.set(temp_hidden_size_mode.get())
 
-                # 手動設定の場合のみ値を取得
                 if self.lr_mode.get() == "手動調整": self.lr.set(temp_lr.get())
                 if self.epochs_mode.get() == "手動調整": self.epochs.set(temp_epochs.get())
                 if self.num_layers_mode.get() == "手動調整": self.num_layers.set(temp_num_layers.get())
                 if self.hidden_size_mode.get() == "手動調整": self.hidden_size.set(temp_hidden_size.get())
 
-                # 早期終了設定を保存
                 self.early_stopping_var.set(temp_early_stopping_var.get())
                 self.patience_var.set(temp_patience_var.get())
 
@@ -230,12 +225,12 @@ class TrainApp:
         optimizer = self.optimizer_var.get()
         loss_func = self.loss_var.get()
         window_size = self.window_size.get()
+        labeling_method = self.labeling_method_var.get()
         lr = self.lr.get()
         epochs = self.epochs.get()
         num_layers = self.num_layers.get()
         hidden_size = self.hidden_size.get()
 
-        # 自動/手動モードを取得
         hyper_params_modes = {
             "lr_mode": self.lr_mode.get(),
             "epochs_mode": self.epochs_mode.get(),
@@ -243,9 +238,9 @@ class TrainApp:
             "hidden_size_mode": self.hidden_size_mode.get()
         }
 
-        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_paths, features, window_size, lr, epochs, num_layers, hidden_size, hyper_params_modes, self.early_stopping_var.get(), self.patience_var.get()), daemon=True).start()
+        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_paths, features, window_size, labeling_method, lr, epochs, num_layers, hidden_size, hyper_params_modes, self.early_stopping_var.get(), self.patience_var.get()), daemon=True).start()
 
-    def run_training(self, model, optimizer, loss_func, csv_paths, selected_features, window_size, lr, epochs, num_layers, hidden_size, hyper_params_modes, use_early_stopping, patience):
+    def run_training(self, model, optimizer, loss_func, csv_paths, selected_features, window_size, labeling_method, lr, epochs, num_layers, hidden_size, hyper_params_modes, use_early_stopping, patience):
         try:
             trained_model, scaler_X, scaler_y, actual_hidden_size = train_model(
                 csv_paths,
@@ -254,6 +249,7 @@ class TrainApp:
                 loss_type=loss_func,
                 selected_features=selected_features,
                 window_size=window_size,
+                labeling_method=labeling_method,
                 lr=lr,
                 epochs=epochs,
                 num_layers=num_layers,
@@ -268,17 +264,16 @@ class TrainApp:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M")
                 base_filename = f"{model}_{timestamp}"
 
-                # モデル保存
                 model_path = os.path.join("models", f"{base_filename}.pt")
                 torch.save(trained_model.state_dict(), model_path)
 
-                # JSONファイル保存
                 config = {
                     "model_type": model,
                     "optimizer": optimizer,
                     "loss_function": loss_func,
                     "selected_features": selected_features,
                     "window_size": window_size,
+                    "labeling_method": labeling_method,
                     "lr": lr,
                     "epochs": epochs,
                     "num_layers": num_layers,
@@ -301,8 +296,6 @@ class TrainApp:
         self.root.destroy()
         from main import main_menu
         main_menu()
-
-# 起動関数
 
 def launch_train_gui():
     root = tk.Tk()

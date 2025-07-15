@@ -235,14 +235,13 @@ import random
 class BioSignalWindowDataset(Dataset):
     """
     生体信号データのためのカスタムDatasetクラス。
-    事前に生成されたウィンドウのリストを受け取る。
+    事前に生成されたウィンドウのリストとラベル付け方法を受け取る。
     """
-    def __init__(self, windows, scaler_X, scaler_y, selected_features):
+    def __init__(self, windows, scaler_X, scaler_y, labeling_method="average"):
         self.windows = windows
         self.scaler_X = scaler_X
         self.scaler_y = scaler_y
-        self.feature_indices = {feat: i for i, feat in enumerate(selected_features + ['kss'])}
-
+        self.labeling_method = labeling_method
 
     def __len__(self):
         return len(self.windows)
@@ -250,11 +249,18 @@ class BioSignalWindowDataset(Dataset):
     def __getitem__(self, idx):
         window = self.windows[idx]
         
-        # 特徴量とラベルを抽出
-        features = window[:, :-1]  # 最後の列以外
-        label = np.mean(window[:, -1]) # 最後の列(kss)の平均値
+        features = window[:, :-1]
+        kss_values = window[:, -1]
 
-        # データを正規化
+        if self.labeling_method == "average":
+            label = np.mean(kss_values)
+        elif self.labeling_method == "first":
+            label = kss_values[0]
+        elif self.labeling_method == "last":
+            label = kss_values[-1]
+        else:
+            raise ValueError(f"無効なラベリング方法です: {self.labeling_method}")
+
         features_scaled = self.scaler_X.transform(features)
         label_scaled = self.scaler_y.transform(np.array([[label]]))
 
@@ -262,7 +268,7 @@ class BioSignalWindowDataset(Dataset):
 
 # モデル学習関数
 def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_type="Adam",
-                selected_features=None, window_size=60,
+                selected_features=None, window_size=60, labeling_method="average",
                 lr=0.001, epochs=30, num_layers=2, hidden_size=64, hyper_params_modes=None,
                 use_early_stopping=False, patience=10):
     
@@ -272,33 +278,26 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
     if selected_features is None or not selected_features:
         raise ValueError("selected_features を1つ以上選択してください。")
 
-    # 1. 各CSVからウィンドウを生成
     all_windows = []
     for path in data_paths:
         df = pd.read_csv(path)
-        # 'kss' カラムが存在するか確認
         if 'kss' not in df.columns:
             print(f"警告: {path} に 'kss' カラムが見つかりません。スキップします。")
             continue
         
-        # 選択された特徴量と'kss'を抽出
         cols_to_use = selected_features + ['kss']
         df_filtered = df[cols_to_use]
-        
-        # NumPy配列に変換
         data_np = df_filtered.to_numpy()
         
-        # このファイルからウィンドウを生成
         num_windows = len(data_np) - window_size + 1
         for i in range(num_windows):
             all_windows.append(data_np[i : i + window_size])
 
     if not all_windows:
-        raise ValueError("有効な学習データウィンドウが1つも生成されませんでした。CSVファイルの内容と選択した特徴量を確認してください。")
+        raise ValueError("有効な学習データウィンドウが1つも生成されませんでした。")
 
     total_data_points = sum(len(w) for w in all_windows)
 
-    # ハイパーパラメータの自動調整ロジック (変更なし)
     if hyper_params_modes:
         if hyper_params_modes["lr_mode"] == "自動調整":
             lr = max(0.0001, 0.001 * (1 - (total_data_points / 1000000) * 0.5))
@@ -320,16 +319,23 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
         else:
             print("早期終了: 無効")
 
-    # 2. ウィンドウリストをシャッフルし、訓練用と検証用に分割
     random.shuffle(all_windows)
     train_size = int(len(all_windows) * 0.8)
     train_windows = all_windows[:train_size]
     val_windows = all_windows[train_size:]
 
-    # 3. スケーラーの準備と学習 (訓練データのみを使用)
-    # 訓練データからすべての特徴量とラベルを抽出してスケーラーを学習
+    def get_labels(windows, method):
+        if method == "average":
+            return np.array([np.mean(w[:, -1]) for w in windows]).reshape(-1, 1)
+        elif method == "first":
+            return np.array([w[0, -1] for w in windows]).reshape(-1, 1)
+        elif method == "last":
+            return np.array([w[-1, -1] for w in windows]).reshape(-1, 1)
+        else:
+            raise ValueError(f"無効なラベリング方法です: {method}")
+
     all_train_features = np.vstack([w[:, :-1] for w in train_windows])
-    all_train_labels = np.array([np.mean(w[:, -1]) for w in train_windows]).reshape(-1, 1);
+    all_train_labels = get_labels(train_windows, labeling_method);
 
     scaler_X = StandardScaler()
     scaler_y = StandardScaler()
@@ -337,7 +343,6 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
     scaler_X.fit(all_train_features)
     scaler_y.fit(all_train_labels)
 
-    # ゼロ除算を回避するためのチェックと対策
     if np.any(scaler_X.scale_ == 0):
         print("警告: 特徴量の標準偏差が0です。スケーリングを調整します。")
         scaler_X.scale_[scaler_X.scale_ == 0] = 1.0
@@ -345,11 +350,9 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
         print("警告: ラベル（kss）の標準偏差が0です。スケーリングを調整します。")
         scaler_y.scale_[0] = 1.0
 
-    # 4. カスタムDatasetのインスタンス化
-    train_dataset = BioSignalWindowDataset(train_windows, scaler_X, scaler_y, selected_features)
-    val_dataset = BioSignalWindowDataset(val_windows, scaler_X, scaler_y, selected_features)
+    train_dataset = BioSignalWindowDataset(train_windows, scaler_X, scaler_y, labeling_method)
+    val_dataset = BioSignalWindowDataset(val_windows, scaler_X, scaler_y, labeling_method)
 
-    # 5. デバイスの決定とDataLoaderの作成
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pin_memory_flag = True if device.type == 'cuda' else False
     batch_size = 64
@@ -357,18 +360,15 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory_flag)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory_flag)
 
-    # 6. モデルの構築
     model = get_model(model_type, input_size=len(selected_features), 
                       hidden_size=hidden_size, num_layers=num_layers, regression=True).to(device)
 
-    # 7. 損失関数と最適化手法
     criterion = nn.MSELoss() if loss_type == "MSELoss" else nn.BCELoss()
     optimizer_class = {"Adam": optim.Adam, "SGD": optim.SGD, "RMSprop": optim.RMSprop}.get(optimizer_type)
     if optimizer_class is None:
         raise ValueError(f"指定された最適化手法が無効です: {optimizer_type}")
     optimizer = optimizer_class(model.parameters(), lr=lr)
 
-    # 8. 学習ループ
     best_val_loss = float('inf')
     patience_counter = 0
     best_model_state = None
@@ -426,25 +426,25 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="モデルの学習を行います。")
     parser.add_argument("--model_type", type=str, default="LSTM", choices=["LSTM", "GRU", "RNN"],
                         help="学習するモデルの種類を選択します (LSTM, GRU, RNN)")
+    parser.add_argument("--labeling", type=str, default="average", choices=["average", "first", "last"], help="ラベル付け方法を選択します。")
     args = parser.parse_args()
 
-    # 複数のファイルを指定する例
     data_paths = [
         "../data/train/train_bio_driver_data.csv",
         "../data/train/testdata2.csv"
     ]
     selected_features = ["pupil", "eda", "eeg", "hr"]
     
-    print(f"\n----- {args.model_type} モデルの学習を開始します -----")
+    print(f"\n----- {args.model_type} モデルの学習を開始します (ラベリング: {args.labeling}) -----")
     
     model, scaler_X, scaler_y, _ = train_model(
         data_paths, 
         model_type=args.model_type, 
         selected_features=selected_features,
-        window_size=60
+        window_size=60,
+        labeling_method=args.labeling
     )
 
-    # モデル保存
     now = datetime.now().strftime("%Y%m%d_%H%M")
     model_dir = "../models"
     os.makedirs(model_dir, exist_ok=True)
