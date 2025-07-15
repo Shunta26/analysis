@@ -30,7 +30,7 @@ class TrainApp:
         self.optimizer_var = tk.StringVar()
         self.loss_var = tk.StringVar()
         self.save_model_var = tk.BooleanVar(value=True)
-        self.csv_path = None
+        self.csv_paths = None
         self.window_size = tk.IntVar(value=60)
 
         # 詳細設定のデフォルト値
@@ -74,9 +74,9 @@ class TrainApp:
         self.loss_combo.pack()
 
         # CSVファイル読み込み
-        self.file_label = ttk.Label(self.root, text="CSVファイルが選択されていません")
+        self.file_label = ttk.Label(self.root, text="CSVファイルが選択されていません", wraplength=580, justify=tk.LEFT)
         self.file_label.pack(pady=10)
-        ttk.Button(self.root, text="CSVファイルを選択", command=self.select_file).pack()
+        ttk.Button(self.root, text="CSVファイルを選択", command=self.select_files).pack()
 
         # 詳細設定ボタン
         ttk.Button(self.root, text="詳細設定", command=self.open_settings_window).pack(pady=10)
@@ -207,14 +207,15 @@ class TrainApp:
         ttk.Button(btn_frame, text="保存して戻る", command=save_and_close).pack(side='left', padx=10)
         ttk.Button(btn_frame, text="キャンセル", command=settings_win.destroy).pack(side='right', padx=10)
 
-    def select_file(self):
-        filepath = filedialog.askopenfilename(filetypes=[("CSVファイル", "*.csv")])
-        if filepath:
-            self.csv_path = filepath
-            self.file_label.config(text=f"選択ファイル: {filepath}")
+    def select_files(self):
+        filepaths = filedialog.askopenfilenames(filetypes=[("CSVファイル", "*.csv")])
+        if filepaths:
+            self.csv_paths = filepaths
+            filenames = [os.path.basename(p) for p in filepaths]
+            self.file_label.config(text="選択中のファイル:\n" + "\n".join(filenames))
 
     def start_training(self):
-        if not self.csv_path:
+        if not self.csv_paths:
             messagebox.showwarning("警告", "CSVファイルを選択してください。")
             return
 
@@ -242,12 +243,12 @@ class TrainApp:
             "hidden_size_mode": self.hidden_size_mode.get()
         }
 
-        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_path, features, window_size, lr, epochs, num_layers, hidden_size, hyper_params_modes, self.early_stopping_var.get(), self.patience_var.get()), daemon=True).start()
+        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_paths, features, window_size, lr, epochs, num_layers, hidden_size, hyper_params_modes, self.early_stopping_var.get(), self.patience_var.get()), daemon=True).start()
 
-    def run_training(self, model, optimizer, loss_func, csv_path, selected_features, window_size, lr, epochs, num_layers, hidden_size, hyper_params_modes, use_early_stopping, patience):
+    def run_training(self, model, optimizer, loss_func, csv_paths, selected_features, window_size, lr, epochs, num_layers, hidden_size, hyper_params_modes, use_early_stopping, patience):
         try:
             trained_model, scaler_X, scaler_y, actual_hidden_size = train_model(
-                csv_path,
+                csv_paths,
                 model_type=model.lower(),
                 optimizer_type=optimizer,
                 loss_type=loss_func,
