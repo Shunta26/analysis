@@ -32,7 +32,7 @@ class TrainApp:
         self.save_model_var = tk.BooleanVar(value=True)
         self.csv_paths = None
         self.window_size = tk.IntVar(value=60)
-        self.labeling_method_var = tk.StringVar(value="average") # 追加
+        self.labeling_method_var = tk.StringVar(value="last") # 追加
 
         # 詳細設定のデフォルト値
         self.lr = tk.DoubleVar(value=0.001)

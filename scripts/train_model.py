@@ -237,7 +237,7 @@ class BioSignalWindowDataset(Dataset):
     生体信号データのためのカスタムDatasetクラス。
     事前に生成されたウィンドウのリストとラベル付け方法を受け取る。
     """
-    def __init__(self, windows, scaler_X, scaler_y, labeling_method="average"):
+    def __init__(self, windows, scaler_X, scaler_y, labeling_method="last"):
         self.windows = windows
         self.scaler_X = scaler_X
         self.scaler_y = scaler_y
@@ -267,13 +267,20 @@ class BioSignalWindowDataset(Dataset):
         return torch.tensor(features_scaled, dtype=torch.float32), torch.tensor(label_scaled, dtype=torch.float32).flatten()
 
 # モデル学習関数
-def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_type="Adam",
-                selected_features=None, window_size=60, labeling_method="average",
+'''def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_type="Adam",
+                selected_features=None, window_size=60, labeling_method="last",
                 lr=0.001, epochs=30, num_layers=2, hidden_size=64, hyper_params_modes=None,
                 use_early_stopping=False, patience=10):
+
+    print("
+----- 学習設定 -----")
+    print(f"使用生理指標: {', '.join(selected_features)}")
+    print(f"ラベリング方法: {labeling_method}")
+    print(f"ウィンドウサイズ: {window_size}")
+    print("--------------------")
     
     if isinstance(data_paths, str):
-        data_paths = [data_paths]
+        data_paths = [data_paths]''
     
     if selected_features is None or not selected_features:
         raise ValueError("selected_features を1つ以上選択してください。")
@@ -426,7 +433,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="モデルの学習を行います。")
     parser.add_argument("--model_type", type=str, default="LSTM", choices=["LSTM", "GRU", "RNN"],
                         help="学習するモデルの種類を選択します (LSTM, GRU, RNN)")
-    parser.add_argument("--labeling", type=str, default="average", choices=["average", "first", "last"], help="ラベル付け方法を選択します。")
+    parser.add_argument("--labeling", type=str, default="last", choices=["average", "first", "last"], help="ラベル付け方法を選択します。")
     args = parser.parse_args()
 
     data_paths = [
