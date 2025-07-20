@@ -19,12 +19,7 @@ class TrainApp:
         self.root.geometry("600x600")
 
         # 各設定用変数
-        self.selected_features = {
-            'pupil': tk.BooleanVar(value=True),
-            'eda': tk.BooleanVar(value=True),
-            'eeg': tk.BooleanVar(value=True),
-            'hr': tk.BooleanVar(value=True)
-        }
+        self.selected_features = {}
 
         self.model_var = tk.StringVar()
         self.optimizer_var = tk.StringVar()
@@ -56,7 +51,23 @@ class TrainApp:
         self.validation_interval_var = tk.IntVar(value=5)
         self.validation_interval_mode = tk.StringVar(value="自動調整")
 
+        self.load_features_from_config()
         self.setup_widgets()
+
+    def load_features_from_config(self):
+        try:
+            # config.jsonはプロジェクトのルートにあると想定
+            with open("config.json", "r", encoding="utf-8") as f:
+                config = json.load(f)
+                features = config.get("features", [])
+                for feature in features:
+                    self.selected_features[feature] = tk.BooleanVar(value=True)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            messagebox.showwarning("設定ファイルエラー", f"config.jsonの読み込みに失敗しました。\n{e}\nデフォルトの指標を使います。")
+            # フォールバック
+            default_features = ['pupil', 'eda', 'eeg', 'hr']
+            for feature in default_features:
+                self.selected_features[feature] = tk.BooleanVar(value=True)
 
     def setup_widgets(self):
         # モデル選択
@@ -340,4 +351,3 @@ def launch_train_gui():
     root = tk.Tk()
     app = TrainApp(root)
     root.mainloop()
-    

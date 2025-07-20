@@ -1,0 +1,8 @@
+{
+    "features": [
+        "pupil",
+        "eda",
+        "eeg",
+        "hr"
+    ]
+}
