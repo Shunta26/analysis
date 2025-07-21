@@ -232,8 +232,8 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="モデルの学習を行います。")
-    parser.add_argument("--model_type", type=str, default="LSTM", choices=["LSTM", "GRU", "RNN"],
-                        help="学習するモデルの種類を選択します (LSTM, GRU, RNN)")
+    parser.add_argument("--model_type", type=str, default="LSTM", choices=["LSTM", "GRU", "RNN", "Transformer"],
+                        help="学習するモデルの種類を選択します (LSTM, GRU, RNN, Transformer)")
     parser.add_argument("--labeling", type=str, default="last", choices=["average", "first", "last"], help="ラベル付け方法を選択します。")
     parser.add_argument("--dropout", type=float, default=0.2, help="ドロップアウト率を指定します。")
     parser.add_argument("--no_dropout", action="store_true", help="ドロップアウトを使用しません。")
