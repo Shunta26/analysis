@@ -30,7 +30,7 @@ def load_model(model_path):
     scaler_y_mean = np.array(config["scaler_y_mean"])
     scaler_y_scale = np.array(config["scaler_y_scale"])
 
-    return model, config["selected_features"], scaler_X_mean, scaler_X_scale, scaler_y_mean, scaler_y_scale
+    return model, config["selected_features"], scaler_X_mean, scaler_X_scale, scaler_y_mean, scaler_y_scale, num_layers, hidden_size
 
 def predict_awakenness(model, df, selected_features, scaler_X_mean, scaler_X_scale, scaler_y_mean, scaler_y_scale, sequence_length=10):
     """

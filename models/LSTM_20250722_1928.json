@@ -1,0 +1,30 @@
+{
+    "model_type": "LSTM",
+    "optimizer": "Adam",
+    "loss_function": "MSELoss",
+    "selected_features": [
+        "pupil",
+        "hr"
+    ],
+    "window_size": 60,
+    "labeling_method": "last",
+    "lr": 0.0001,
+    "epochs": 100,
+    "num_layers": 5,
+    "hidden_size": 256,
+    "timestamp": "20250722_1928",
+    "scaler_X_mean": [
+        5.072648150391516,
+        926.1834931001791
+    ],
+    "scaler_X_scale": [
+        0.6131167981657076,
+        109.24166735652024
+    ],
+    "scaler_y_mean": [
+        6.880543558411461
+    ],
+    "scaler_y_scale": [
+        0.841739807063677
+    ]
+}

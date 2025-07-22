@@ -338,7 +338,7 @@ class TrainApp:
 
     def run_training(self, model, optimizer, loss_func, csv_paths, selected_features, window_size, labeling_method, lr, epochs, num_layers, hidden_size, use_dropout, dropout_rate, validation_interval, hyper_params_modes, use_early_stopping, patience):
         try:
-            trained_model, scaler_X, scaler_y, actual_hidden_size = train_model(
+            trained_model, scaler_X, scaler_y, actual_hidden_size, actual_num_layers, actual_lr, actual_epochs, actual_dropout_rate, actual_validation_interval, training_history, best_epoch = train_model(
                 csv_paths,
                 model_type=model.lower(),
                 optimizer_type=optimizer,
@@ -373,10 +373,14 @@ class TrainApp:
                     "selected_features": selected_features,
                     "window_size": window_size,
                     "labeling_method": labeling_method,
-                    "lr": lr,
-                    "epochs": epochs,
-                    "num_layers": num_layers,
+                    "lr": actual_lr,
+                    "epochs": actual_epochs,
+                    "num_layers": actual_num_layers,
                     "hidden_size": actual_hidden_size,
+                    "dropout_rate": actual_dropout_rate,
+                    "validation_interval": actual_validation_interval,
+                    "training_history": training_history,
+                    "best_epoch": best_epoch,
                     "timestamp": timestamp,
                     "scaler_X_mean": scaler_X.mean_.tolist(),
                     "scaler_X_scale": scaler_X.scale_.tolist(),

@@ -217,9 +217,13 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
                         break
     
     if use_early_stopping and best_model_state is not None:
+        print(f"最終モデルとしてエポック {best_epoch} の状態をロードしました。")
         model.load_state_dict(best_model_state)
+    else:
+        best_epoch = epochs
+        print(f"最終エポック {best_epoch} までの学習が完了しました。")
 
-    return model, scaler_X, scaler_y, hidden_size
+    return model, scaler_X, scaler_y, hidden_size, num_layers, lr, epochs, dropout_rate, validation_interval, training_history, best_epoch
 
 
 if __name__ == "__main__":
