@@ -1,3 +1,4 @@
+
 #学習処理（データ読み込み～学習・評価・返却）
 # scripts/train_model.py
 
@@ -82,29 +83,19 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
     if hyper_params_modes:
         if hyper_params_modes["lr_mode"] == "自動調整":
             lr = max(0.0001, 0.001 * (1 - (total_data_points / 1000000) * 0.5))
-            print(f"自動調整: 学習率 = {lr:.6f}")
         if hyper_params_modes["epochs_mode"] == "自動調整":
             epochs = int(30 + (total_data_points / 10000) * 2)
             epochs = min(epochs, 100)
-            print(f"自動調整: エポック数 = {epochs}")
         if hyper_params_modes["num_layers_mode"] == "自動調整":
             num_layers = int(2 + (total_data_points / 50000))
             num_layers = min(num_layers, 5)
-            print(f"自動調整: モデル層 = {num_layers}")
         if hyper_params_modes["hidden_size_mode"] == "自動調整":
             hidden_size = int(64 + (total_data_points / 10000) * 10)
             hidden_size = min(hidden_size, 256)
-            print(f"自動調整: 隠れ層 = {hidden_size}")
         if hyper_params_modes["dropout_mode"] == "自動調整":
             dropout_rate = max(0.1, 0.5 * (1 - (total_data_points / 1000000) * 0.8))
-            print(f"自動調整: ドロップアウト率 = {dropout_rate:.2f}")
         if hyper_params_modes["validation_interval_mode"] == "自動調整":
-            validation_interval = max(1, int(epochs / 10)) # エポック数の10分の1を推奨
-            print(f"自動調整: 検証間隔 = {validation_interval} エポック")
-        if use_early_stopping:
-            print(f"早期終了: 有効 (Patience = {patience})")
-        else:
-            print("早期終了: 無効")
+            validation_interval = max(1, int(epochs / 10))
 
     print("\n----- 最終学習設定 -----")
     print(f"モデルタイプ: {model_type}")
@@ -113,18 +104,20 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
     print(f"使用生理指標: {', '.join(selected_features)}")
     print(f"ラベリング方法: {labeling_method}")
     print(f"ウィンドウサイズ: {window_size}")
-    print(f"学習率: {lr:.6f}")
-    print(f"エポック数: {epochs}")
-    print(f"モデル層: {num_layers}")
-    print(f"隠れ層: {hidden_size}")
+    print(f"学習率: {lr:.6f} ({hyper_params_modes['lr_mode']})")
+    print(f"エポック数: {epochs} ({hyper_params_modes['epochs_mode']})")
+    print(f"モデル層: {num_layers} ({hyper_params_modes['num_layers_mode']})")
+    print(f"隠れ層: {hidden_size} ({hyper_params_modes['hidden_size_mode']})")
     if use_dropout:
-        print(f"ドロップアウト率: {dropout_rate:.2f}")
+        print(f"ドロップアウト率: {dropout_rate:.2f} ({hyper_params_modes['dropout_mode']})")
     else:
         print("ドロップアウト: 無効")
-    print(f"検証間隔: {validation_interval} エポック")
-    print(f"早期終了: {'有効' if use_early_stopping else '無効'}")
+    print(f"検証間隔: {validation_interval} エポック ({hyper_params_modes['validation_interval_mode']})")
+    es_status = '有効' if use_early_stopping else '無効'
     if use_early_stopping:
-        print(f"Patience: {patience}")
+        print(f"早期終了: {es_status} (Patience: {patience})")
+    else:
+        print(f"早期終了: {es_status}")
     print("----------------------")
 
     random.shuffle(all_windows)
@@ -224,9 +217,13 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
                         break
     
     if use_early_stopping and best_model_state is not None:
+        print(f"最終モデルとしてエポック {best_epoch} の状態をロードしました。")
         model.load_state_dict(best_model_state)
+    else:
+        best_epoch = epochs
+        print(f"最終エポック {best_epoch} までの学習が完了しました。")
 
-    return model, scaler_X, scaler_y, hidden_size
+    return model, scaler_X, scaler_y, hidden_size, num_layers, lr, epochs, dropout_rate, validation_interval, training_history, best_epoch
 
 
 if __name__ == "__main__":
