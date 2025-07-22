@@ -352,6 +352,7 @@ class TrainApp:
                 hidden_size=hidden_size,
                 use_dropout=use_dropout,
                 dropout_rate=dropout_rate,
+                validation_interval=validation_interval,
                 hyper_params_modes=hyper_params_modes,
                 use_early_stopping=use_early_stopping,
                 patience=patience
