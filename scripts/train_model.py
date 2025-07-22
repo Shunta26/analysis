@@ -50,7 +50,7 @@ class BioSignalWindowDataset(Dataset):
 # モデル学習関数
 def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_type="Adam",
                 selected_features=None, window_size=60, labeling_method="last",
-                lr=0.001, epochs=30, num_layers=2, hidden_size=64, use_dropout=True, dropout_rate=0.2, validation_interval=5, hyper_params_modes=None,
+                lr=0.001, epochs=30, num_layers=2, hidden_size=64, nhead=4, use_dropout=True, dropout_rate=0.2, validation_interval=5, hyper_params_modes=None,
                 use_early_stopping=False, patience=10):
 
     if isinstance(data_paths, str):
@@ -95,6 +95,14 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
             hidden_size = int(64 + (total_data_points / 10000) * 10)
             hidden_size = min(hidden_size, 256)
             print(f"自動調整: 隠れ層 = {hidden_size}")
+        if model_type == 'transformer' and hyper_params_modes["nhead_mode"] == "自動調整":
+            # nheadはhidden_sizeの約数である必要があるため、自動調整のロジックを工夫
+            possible_nheads = [h for h in [1, 2, 4, 8, 16] if hidden_size % h == 0]
+            if not possible_nheads:
+                nhead = 1 # デフォルト値
+            else: # データ量に応じて選択
+                nhead = possible_nheads[min(len(possible_nheads)-1, total_data_points // 50000)]
+            print(f"自動調整: NHEAD = {nhead}")
         if hyper_params_modes["dropout_mode"] == "自動調整":
             dropout_rate = max(0.1, 0.5 * (1 - (total_data_points / 1000000) * 0.8))
             print(f"自動調整: ドロップアウト率 = {dropout_rate:.2f}")
@@ -117,6 +125,8 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
     print(f"エポック数: {epochs}")
     print(f"モデル層: {num_layers}")
     print(f"隠れ層: {hidden_size}")
+    if model_type == 'transformer':
+        print(f"NHEAD: {nhead}")
     if use_dropout:
         print(f"ドロップアウト率: {dropout_rate:.2f}")
     else:
@@ -169,7 +179,7 @@ def train_model(data_paths, model_type="LSTM", loss_type="MSELoss", optimizer_ty
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory_flag)
 
     model = get_model(model_type, input_size=len(selected_features), 
-                      hidden_size=hidden_size, num_layers=num_layers, use_dropout=use_dropout, dropout_rate=dropout_rate, regression=True).to(device)
+                      hidden_size=hidden_size, num_layers=num_layers, nhead=nhead, use_dropout=use_dropout, dropout_rate=dropout_rate, regression=True).to(device)
 
     criterion = nn.MSELoss() if loss_type == "MSELoss" else nn.BCELoss()
     optimizer_class = {"Adam": optim.Adam, "SGD": optim.SGD, "RMSprop": optim.RMSprop}.get(optimizer_type)

@@ -34,6 +34,7 @@ class TrainApp:
         self.epochs = tk.IntVar(value=30)
         self.num_layers = tk.IntVar(value=2)
         self.hidden_size = tk.IntVar(value=64)
+        self.nhead = tk.IntVar(value=4)
 
         # 早期終了設定
         self.early_stopping_var = tk.BooleanVar(value=False)
@@ -44,6 +45,7 @@ class TrainApp:
         self.epochs_mode = tk.StringVar(value="自動調整")
         self.num_layers_mode = tk.StringVar(value="自動調整")
         self.hidden_size_mode = tk.StringVar(value="自動調整")
+        self.nhead_mode = tk.StringVar(value="自動調整")
         self.dropout_var = tk.BooleanVar(value=True)
         self.dropout_rate_var = tk.DoubleVar(value=0.2)
         self.dropout_mode = tk.StringVar(value="自動調整")
@@ -73,7 +75,7 @@ class TrainApp:
         # モデル選択
         ttk.Label(self.root, text="モデル選択:").pack(pady=5)
         self.model_combo = ttk.Combobox(self.root, textvariable=self.model_var, state="readonly",
-                                        values=["LSTM", "GRU", "RNN"])
+                                        values=["LSTM", "GRU", "RNN", "Transformer"])
         self.model_combo.current(0)
         self.model_combo.pack()
 
@@ -111,7 +113,7 @@ class TrainApp:
     def open_settings_window(self):
         settings_win = tk.Toplevel(self.root)
         settings_win.title("詳細設定")
-        settings_win.geometry("400x700") # ウィンドウサイズを調整
+        settings_win.geometry("400x750") # ウィンドウサイズを調整
 
         # --- ウィジェットの状態を切り替える関数 ---
         def toggle_entry(entry_widget, mode_var):
@@ -135,7 +137,7 @@ class TrainApp:
 
             combo.bind("<<ComboboxSelected>>", lambda event: toggle_entry(entry, mode_var))
             toggle_entry(entry, mode_var)
-            return entry
+            return frame, entry
 
         # --- 各種設定 ---
         feature_frame = ttk.LabelFrame(settings_win, text="使用する生理データ")
@@ -159,11 +161,13 @@ class TrainApp:
         temp_epochs_mode = tk.StringVar(value=self.epochs_mode.get())
         temp_num_layers_mode = tk.StringVar(value=self.num_layers_mode.get())
         temp_hidden_size_mode = tk.StringVar(value=self.hidden_size_mode.get())
+        temp_nhead_mode = tk.StringVar(value=self.nhead_mode.get())
         
         temp_lr = tk.DoubleVar(value=self.lr.get())
         temp_epochs = tk.IntVar(value=self.epochs.get())
         temp_num_layers = tk.IntVar(value=self.num_layers.get())
         temp_hidden_size = tk.IntVar(value=self.hidden_size.get())
+        temp_nhead = tk.IntVar(value=self.nhead.get())
         temp_window_size = tk.IntVar(value=self.window_size.get())
 
         temp_early_stopping_var = tk.BooleanVar(value=self.early_stopping_var.get())
@@ -178,6 +182,11 @@ class TrainApp:
         create_setting_row(param_frame, "エポック数:", temp_epochs_mode, temp_epochs)
         create_setting_row(param_frame, "モデル層:", temp_num_layers_mode, temp_num_layers)
         create_setting_row(param_frame, "隠れ層:", temp_hidden_size_mode, temp_hidden_size)
+        nhead_frame, _ = create_setting_row(param_frame, "NHEAD (Trans.):", temp_nhead_mode, temp_nhead)
+
+        # Transformer以外ではNHEADを非表示
+        if self.model_var.get() != 'Transformer':
+            nhead_frame.pack_forget()
 
         # ドロップアウト設定
         dropout_frame = ttk.LabelFrame(settings_win, text="ドロップアウト設定")
@@ -218,11 +227,13 @@ class TrainApp:
                 self.epochs_mode.set(temp_epochs_mode.get())
                 self.num_layers_mode.set(temp_num_layers_mode.get())
                 self.hidden_size_mode.set(temp_hidden_size_mode.get())
+                self.nhead_mode.set(temp_nhead_mode.get())
 
                 if self.lr_mode.get() == "手動調整": self.lr.set(temp_lr.get())
                 if self.epochs_mode.get() == "手動調整": self.epochs.set(temp_epochs.get())
                 if self.num_layers_mode.get() == "手動調整": self.num_layers.set(temp_num_layers.get())
                 if self.hidden_size_mode.get() == "手動調整": self.hidden_size.set(temp_hidden_size.get())
+                if self.nhead_mode.get() == "手動調整": self.nhead.set(temp_nhead.get())
 
                 self.dropout_var.set(temp_dropout_var.get())
                 self.dropout_mode.set(temp_dropout_mode.get())
@@ -273,6 +284,7 @@ class TrainApp:
         epochs = self.epochs.get()
         num_layers = self.num_layers.get()
         hidden_size = self.hidden_size.get()
+        nhead = self.nhead.get()
         use_dropout = self.dropout_var.get()
         dropout_rate = self.dropout_rate_var.get()
         validation_interval = self.validation_interval_var.get()
@@ -282,13 +294,14 @@ class TrainApp:
             "epochs_mode": self.epochs_mode.get(),
             "num_layers_mode": self.num_layers_mode.get(),
             "hidden_size_mode": self.hidden_size_mode.get(),
+            "nhead_mode": self.nhead_mode.get(),
             "dropout_mode": self.dropout_mode.get(),
             "validation_interval_mode": self.validation_interval_mode.get()
         }
 
-        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_paths, features, window_size, labeling_method, lr, epochs, num_layers, hidden_size, use_dropout, dropout_rate, validation_interval, hyper_params_modes, self.early_stopping_var.get(), self.patience_var.get()), daemon=True).start()
+        threading.Thread(target=self.run_training, args=(model, optimizer, loss_func, self.csv_paths, features, window_size, labeling_method, lr, epochs, num_layers, hidden_size, nhead, use_dropout, dropout_rate, validation_interval, hyper_params_modes, self.early_stopping_var.get(), self.patience_var.get()), daemon=True).start()
 
-    def run_training(self, model, optimizer, loss_func, csv_paths, selected_features, window_size, labeling_method, lr, epochs, num_layers, hidden_size, use_dropout, dropout_rate, validation_interval, hyper_params_modes, use_early_stopping, patience):
+    def run_training(self, model, optimizer, loss_func, csv_paths, selected_features, window_size, labeling_method, lr, epochs, num_layers, hidden_size, nhead, use_dropout, dropout_rate, validation_interval, hyper_params_modes, use_early_stopping, patience):
         try:
             trained_model, scaler_X, scaler_y, actual_hidden_size = train_model(
                 csv_paths,
@@ -302,6 +315,7 @@ class TrainApp:
                 epochs=epochs,
                 num_layers=num_layers,
                 hidden_size=hidden_size,
+                nhead=nhead,
                 use_dropout=use_dropout,
                 dropout_rate=dropout_rate,
                 hyper_params_modes=hyper_params_modes,
@@ -334,6 +348,8 @@ class TrainApp:
                     "scaler_y_mean": scaler_y.mean_.tolist(),
                     "scaler_y_scale": scaler_y.scale_.tolist()
                 }
+                if model.lower() == 'transformer':
+                    config['nhead'] = nhead
                 json_path = os.path.join("models", f"{base_filename}.json")
                 with open(json_path, "w", encoding="utf-8") as f:
                     json.dump(config, f, ensure_ascii=False, indent=4)
